@@ -19,8 +19,6 @@ min_chunk_size = 100
 
 import logging
 
-
-
 import os
 env_osm_host = os.getenv('OSM_HOST')
 if env_osm_host: 
@@ -39,5 +37,13 @@ else :
     logging.info(f"Use default photon host: {photon_host}")
 
 
-libpostal_host = "localhost:8080"
+env_lpost_host = os.getenv('LPOST_HOST')
+if env_lpost_host: 
+    logging.info(f"get LPOST_HOST from env: {env_lpost_host}")
+    libpostal_host = env_lpost_host
+else : 
+    libpostal_host = "localhost:8080"
+    logging.info(f"Use default libpostal host: {photon_host}")
+
+
 

@@ -2,25 +2,31 @@
 
 echo "STARTING start.sh ..."
 
-if [ X$1 = "Xnophoton" ] 
+if [ X$1 = "X" ] 
 then 
-   echo "No photon"
+    what="photon;libpostal;wrapper"
 else
+    what=$1
+fi
+    
+if [[ $what == *"photon"* ]]; then
    echo "Running Photon"
    cd /photon
    java -jar photon-*.jar &
 fi
 
-echo "Running libpostal REST service"
 
-cd /nominatim_wrapper
+if [[ $what == *"libpostal"* ]]; then
+    echo "Running libpostal REST service"
+    cd /NominatimWrapper
+    gunicorn -w ${NB_LPOST_WORKERS:-1} -b 0.0.0.0:8080 wsgi_libpostal:app &
+fi
 
-gunicorn -w ${NB_LPOST_WORKERS:-1} -b 0.0.0.0:8080 wsgi_libpostal:app &  
+if [[ $what == *"wrapper"* ]]; then
+    echo "Running REST service"
+    cd /NominatimWrapper
+    gunicorn -w ${NB_WORKERS:-1} -b 0.0.0.0:5000 -e OSM_HOST=${OSM_HOST} AddressCleanserREST:app &
+    
+fi
 
-echo "Running REST service"
-cd /nominatim_wrapper
-
-
-gunicorn -w ${NB_WORKERS:-1} -b 0.0.0.0:5000 -e OSM_HOST=${OSM_HOST} AddressCleanserREST:app
-
-
+sleep infinity

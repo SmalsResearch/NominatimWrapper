@@ -1,0 +1,43 @@
+FROM centos:7
+
+RUN yum -y update
+
+# Install Python & Packages
+RUN yum -y install python3 python3-devel git gcc
+
+# TODO : remove vim
+
+RUN pip3 install Flask gunicorn requests 
+
+# Install libpostal
+# https://github.com/openvenues/libpostal 
+RUN yum -y install curl autoconf automake libtool pkgconfig make
+
+RUN mkdir /libpostal_code
+RUN mkdir /libpostal_datadir
+
+WORKDIR /libpostal_code
+RUN git clone https://github.com/openvenues/libpostal
+WORKDIR libpostal
+
+RUN ./bootstrap.sh 
+RUN ./configure --datadir=/libpostal_datadir
+RUN make -j4
+RUN make install
+RUN ldconfig /usr/local/lib
+
+
+# Pypostal : https://github.com/openvenues/pypostal
+RUN pip3 install postal
+
+RUN mkdir /NominatimWrapper
+WORKDIR /NominatimWrapper
+COPY wsgi_libpostal.py ./
+COPY LibpostalREST.py ./
+
+
+COPY Docker/start.sh /start.sh
+CMD ["/start.sh", "libpostal"]  
+
+
+EXPOSE 8080

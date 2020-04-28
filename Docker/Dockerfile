@@ -10,7 +10,6 @@ RUN yum -y install python3 python3-devel java git wget pbzip2 vim gcc
 # TODO : remove vim
 
 RUN pip3 install Flask gunicorn pandas numpy matplotlib requests dask dask[dataframe] toolz jellyfish tqdm fsspec IPython openpyxl==3.0.1 psutil bokeh
- 
 
 
 # Install libpostal
@@ -50,8 +49,8 @@ RUN tar xzf photon.tar.gz
 # Install code
 #
 
-RUN mkdir /nominatim_wrapper
-WORKDIR /nominatim_wrapper
+RUN mkdir /NominatimWrapper
+WORKDIR /NominatimWrapper
 COPY *.py ./
 
 ENV LANG en_US.UTF-8  

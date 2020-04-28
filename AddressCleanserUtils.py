@@ -908,7 +908,7 @@ def apply_transformers(addresses, transformers, addr_key_field, street_field, ho
             changed = changed | (init_addresses[field].fillna("").astype(str).str.lower() != transformed_addresses[field].fillna("").astype(str).str.lower())
 
     
-    return transformed_addresses[changed]
+    return transformed_addresses[changed].copy()
 
 
 # ## Photon
