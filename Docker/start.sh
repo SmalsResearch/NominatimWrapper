@@ -2,8 +2,7 @@
 
 echo "STARTING start.sh ..."
 
-if [ X$1 = "X" ] 
-then 
+if [[ X$1 == "X" ]]; then 
     what="photon;libpostal;wrapper"
 else
     what=$1
@@ -19,14 +18,13 @@ fi
 if [[ $what == *"libpostal"* ]]; then
     echo "Running libpostal REST service"
     cd /NominatimWrapper
-    gunicorn -w ${NB_LPOST_WORKERS:-1} -b 0.0.0.0:8080 wsgi_libpostal:app &
+    gunicorn -w ${NB_LPOST_WORKERS:-1} -b 0.0.0.0:8080 LibpostalREST:app &
 fi
 
 if [[ $what == *"wrapper"* ]]; then
     echo "Running REST service"
     cd /NominatimWrapper
     gunicorn -w ${NB_WORKERS:-1} -b 0.0.0.0:5000 -e OSM_HOST=${OSM_HOST} AddressCleanserREST:app &
-    
 fi
 
 

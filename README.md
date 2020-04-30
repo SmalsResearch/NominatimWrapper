@@ -54,15 +54,27 @@ Our Docker build downloads Photon code, but you need to provide Data separetely.
 
 # Docker
 
-Go to the repository root folder (nominatim_wrapper), and copy the file "photon.tar.gz" (see above)
+Go to the repository root folder (NominatimWrapper), and copy the file "photon.tar.gz" in "Docker" folder (see above)
 
 ## Build
 
-`docker build -f Docker/Dockerfile -t nominatim_wrapper --build-arg photon_data=photon.tar.gz .`
+Only one container, embedding Libpostal, Photon and NominatimWrapper 
 
-### Build without embedding Photon
+`docker build -f Docker/Dockerfile -t nominatim_wrapper --build-arg photon_data=Docker/photon.tar.gz .`
 
-`docker build -f Docker/Dockerfile_nophoton -t nominatim_wrapper_nophoton`
+### Build with docker-compose
+Split in three containers : Photon, Libpostal, and NominatimWrapper
+
+`docker-compose -f docker-compose.yml build`
+
+
+### Light version
+
+Based on "alpine" instead of centos. Might be more difficult to build/use. Building time is much longer (many libraries have to be compiled), but image size is smaller.
+
+
+`docker-compose -f docker-compose_alp.yml build`
+
 
 
 ## Run 
@@ -77,7 +89,7 @@ Below, "nominatim_wrapper" is the name of our the docker image, "nomin_wrapper",
 
    -  Ex 2 (using internal instances of OSM and your own instance of photon) : 
    
-     ` docker run -d --name nomin_wrapper  -e OSM_HOST=<nominatim_host>  -e PHOTON_HOST=<photon_ip>2322 -e NB_WORKERS=8 -e NB_LPOST_WORKERS=2  nominatim_wrapper`
+     ` docker run -d --name nomin_wrapper  -e OSM_HOST=<nominatim_host>  -e PHOTON_HOST=<photon_ip>:2322 -e NB_WORKERS=8 -e NB_LPOST_WORKERS=2  nominatim_wrapper`
 
    -  Ex 2 (using public instances): 
    
@@ -85,6 +97,8 @@ Below, "nominatim_wrapper" is the name of our the docker image, "nomin_wrapper",
 
 - To change port mapping : `docker run -d -p 7070:8080 -p 2322:2322 -p 5000:5000  -e OSM_HOST=172.17.0.2:8080 -e NB_WORKERS=8 nominatim_wrapper`
 
+### With docker-compose 
+In "docker-compose.yml", change "OSM_HOST=172.24.0.1:7070" to reflect the address of the Nominatim server.
 
 ## Run batch
 
