@@ -1,11 +1,8 @@
-FROM centos:7
+FROM alpine:3.7
 
 ARG photon_data
 
-RUN yum -y update
-
-# Install Python & Packages
-RUN yum -y install java wget
+RUN apk --update add wget openjdk8-jre bash
 
 # Install Photon
 # TODO : try photo 0.3.2

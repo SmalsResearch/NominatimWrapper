@@ -1,0 +1,27 @@
+version: "3"
+services:
+  photon_alp:
+    build: 
+        context: .
+        dockerfile: Docker_alpine/Dockerfile_photon
+        args: 
+           - photon_data=Docker/photon.tar.gz
+    ports:
+      - "2322:2322"
+      
+  libpostal_alp:
+    build: 
+        context: .
+        dockerfile: Docker_alpine/Dockerfile_libpostal
+    ports:
+      - "8080:8080"
+  wrapper_alp:
+    build: 
+        context: .
+        dockerfile: Docker_alpine/Dockerfile_wrapper
+    ports:
+      - "5000:5000"
+    environment:
+      - PHOTON_HOST=photon_alp:2322
+      - LPOST_HOST=libpostal_alp:8080
+      - OSM_HOST=172.24.0.1:7070

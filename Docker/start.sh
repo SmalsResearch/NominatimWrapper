@@ -8,7 +8,7 @@ then
 else
     what=$1
 fi
-    
+   
 if [[ $what == *"photon"* ]]; then
    echo "Running Photon"
    cd /photon
@@ -29,4 +29,7 @@ if [[ $what == *"wrapper"* ]]; then
     
 fi
 
-sleep infinity
+
+while :; do sleep 3600 ; done
+
+echo "END ... (shouldn't be seen)"

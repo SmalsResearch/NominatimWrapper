@@ -1,0 +1,23 @@
+FROM python:3.7.6-buster
+
+
+RUN pip3 install --no-cache-dir Flask gunicorn matplotlib requests dask dask[dataframe] toolz jellyfish tqdm fsspec IPython openpyxl==3.0.1 psutil bokeh pandas numpy 
+
+# Install code
+#
+
+RUN mkdir /NominatimWrapper
+WORKDIR /NominatimWrapper
+COPY *.py ./
+
+ENV LANG en_US.UTF-8  
+ENV LANGUAGE en_US:en  
+ENV LC_ALL en_US.UTF-8     
+
+WORKDIR /
+
+
+COPY Docker/start.sh /start.sh
+CMD ["/start.sh", "wrapper"]
+
+EXPOSE 5000
