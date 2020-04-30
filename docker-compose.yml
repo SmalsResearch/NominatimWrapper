@@ -15,7 +15,7 @@ services:
         dockerfile: Docker/Dockerfile_libpostal
     ports:
       - "8080:8080"
-     environment: 
+    environment: 
       - NB_LPOST_WORKERS:2
 
   wrapper:
