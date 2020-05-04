@@ -66,15 +66,16 @@ def get_addresses(addresses_filename):
                                        postcode_field, 
                                        city_field, 
                                        street_field, 
-                                       housenbr_field])
-
+                                       housenbr_field,
+                                       country_field])
+    addresses[country_field] =addresses[country_field].fillna("Belgique")
     #addresses = addresses.rename(columns={"index":addr_key_field})
     
-    addresses = addresses[addresses[street_field].notnull() & addresses[city_field].notnull() & addresses[country_field].isnull() ]
+    addresses = addresses[addresses[street_field].notnull() & addresses[city_field].notnull()] # & addresses[country_field].isnull() ]
     
     addresses[postcode_field] = addresses[postcode_field].astype(str)
     
     if sample_size: 
         addresses = addresses.sample(sample_size, random_state=0)
     
-    return addresses.drop(country_field, axis=1)
+    return addresses#.drop(country_field, axis=1)
