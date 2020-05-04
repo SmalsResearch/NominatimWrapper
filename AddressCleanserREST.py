@@ -33,6 +33,12 @@ from config_REST import *
 # In[ ]:
 
 
+
+
+
+# In[ ]:
+
+
 # TO RUN : 
 # jupyter nbconvert --to python AddressCleanserREST.ipynb
 # export  FLASK_APP=AddressCleanserREST.py ; export  FLASK_ENV=development ;  flask   run  
@@ -47,7 +53,7 @@ from config_REST import *
 # !jupyter nbconvert --to python AddressCleanserREST.ipynb
 
 
-# In[ ]:
+# In[1]:
 
 
 # AddressCleanserUtils.pbar.unregister()
@@ -55,44 +61,53 @@ from config_REST import *
 AddressCleanserUtils.with_dask         = False
 AddressCleanserUtils.check_osm_results = True
 
-AddressCleanserUtils.street_field    = street_field
-AddressCleanserUtils.housenbr_field  = housenbr_field
-AddressCleanserUtils.city_field      = city_field
-AddressCleanserUtils.postcode_field  = postcode_field
-
 AddressCleanserUtils.addr_key_field  = addr_key_field
 
 AddressCleanserUtils.regex_replacements = regex_replacements
 
 AddressCleanserUtils.use_osm_parent = use_osm_parent 
 
-# if 'OSM_HOST' in os.environ: 
-    
-#     AddressCleanserUtils.osm_host = os.environ['OSM_HOST']
-#     print("Get OSM Host from env variables : ", AddressCleanserUtils.osm_host )
-# else: 
-#     print("OSM_HOST not in env variables")
+
+# In[2]:
 
 
-# In[ ]:
+"low".upper()
 
 
-import logging
+# In[6]:
+
+
+import logging, os
 
 logger = logging.getLogger()
-logger.setLevel(logging.DEBUG)
+
+# WARNING : no logs
+# INFO : a few logs
+# DEBUG : lots of logs
+
+
+env_log_level = os.getenv('LOG_LEVEL', "MEDIUM").upper().strip()
+if env_log_level == "LOW":
+    logger.setLevel(logging.WARNING)
+elif env_log_level == "MEDIUM":
+    logger.setLevel(logging.INFO)
+elif env_log_level == "HIGH":
+    logger.setLevel(logging.DEBUG)
+else :
+    print(f"Unkown log level '{env_log_level}'. Should be LOW/MEDIUM/HIGH")
+
 
 
 # In[ ]:
-
 
 
 def get_init_df(data):
     return pd.DataFrame([{addr_key_field : "1",
-                          street_field: data["street"],
+                          street_field:   data["street"],
                           housenbr_field: data["housenumber"],
                           postcode_field: data["postcode"],
-                          city_field: data["city"]
+                          city_field:     data["city"],
+                          country_field:  data["country"]
                           }])
 
 
@@ -124,13 +139,7 @@ def format_res(res):
 # In[1]:
 
 
-def process_address(data):
-    vlog(f"Will process {data}")
-    to_process_addresses = get_init_df(data)
-    
-    vlog("Got dataframe")
-    all_reject = pd.DataFrame()
-    for transformers in [ ["orig"],
+transformers_sequence = [ ["orig"],
                           ["regex[init]"],
                           ["nonum"],
                           ["libpostal", "regex[lpost]"], 
@@ -138,13 +147,26 @@ def process_address(data):
                           ["libpostal", "regex[lpost]", "photon"], 
                           ["libpostal", "regex[lpost]", "photon", "nonum"], 
                           ["photon"],
-                          ["photon", "nonum"]]:
-        log ("--------------------------")
-        log("| Transformers : " + ";".join(transformers))
-        log ("--------------------------")
+                          ["photon", "nonum"],
+                          ["nostreet"]
+                        ]
+
+def process_address(data):
+    vlog(f"Will process {data}")
+    to_process_addresses = get_init_df(data)
+    
+    vlog("Got dataframe")
+    all_reject = pd.DataFrame()
+    for transformers in transformers_sequence:
+        vlog ("--------------------------")
+        vlog("| Transformers : " + ";".join(transformers))
+        vlog ("--------------------------")
 
         try :
-            osm_results, rejected, step_stats = transform_and_process(to_process_addresses, transformers, addr_key_field, street_field, housenbr_field, city_field, postcode_field)
+            osm_results, rejected, step_stats = transform_and_process(to_process_addresses, transformers, addr_key_field, 
+                                                                      street_field=street_field, housenbr_field=housenbr_field, 
+                                                                      postcode_field=postcode_field, city_field=city_field,
+                                                                      country_field=country_field)
         except Exception as e: 
             log(f"Error during processing : {e}")
             traceback.print_exc(file=sys.stdout)
@@ -152,7 +174,7 @@ def process_address(data):
         
         all_reject = all_reject.append(rejected, sort=False)
         
-        log(step_stats)
+        vlog(step_stats)
         if osm_results.shape[0] > 0:
             osm_results = add_extra_house_number(osm_results, to_process_addresses, street_field=street_field, housenbr_field=housenbr_field)
             
@@ -184,13 +206,15 @@ def search():
     data= {"street"      : get_arg("street", ""),
            "housenumber" : get_arg("housenumber", ""),
            "city"        : get_arg("city", ""),
-           "postcode"    : get_arg("postcode", "")          
+           "postcode"    : get_arg("postcode", ""),
+           "country"     : get_arg("country", "")
           }
     res = process_address(data)
     log(f"Input: {data}")
     log(f"Result: {res}")
     
-    res["timing"] = {k: AddressCleanserUtils.timestats[k].total_seconds() for k in AddressCleanserUtils.timestats}
+    if with_timing_info: 
+        res["timing"] = {k: AddressCleanserUtils.timestats[k].total_seconds() for k in AddressCleanserUtils.timestats}
     
     return jsonify(res)
 

@@ -70,11 +70,9 @@ Split in three containers : Photon, Libpostal, and NominatimWrapper
 
 ### Light version
 
-Based on "alpine" instead of centos. Might be more difficult to build/use. Building time is much longer (many libraries have to be compiled), but image size is smaller.
-
+Based on "alpine" instead of Centos. Might be more difficult to build/use. Building time is much longer (many libraries have to be compiled), but image size is smaller (~6 GB vd 6.3 GB).
 
 `docker-compose -f docker-compose_alp.yml build`
-
 
 
 ## Run 
@@ -100,6 +98,11 @@ Below, "nominatim_wrapper" is the name of our the docker image, "nomin_wrapper",
 ### With docker-compose 
 In "docker-compose.yml", change "OSM_HOST=172.24.0.1:7070" to reflect the address of the Nominatim server.
 
+Then, 
+
+`docker-compose -f docker-compose.yml up`
+
+
 ## Run batch
 
 - Get IP Address of Nominatim (if using docker) : `docker inspect nominatim |grep \"IPAd`
@@ -114,7 +117,7 @@ In "docker-compose.yml", change "OSM_HOST=172.24.0.1:7070" to reflect the addres
 ## Move
 
 To build the docker image on a machine with Internet access ("build machine") and the run it on another one, without internet access ("run machine") :
-- On the "build machine":  `docker save  nominatim_wrapper | gzip >nominatim_wrapper.tar.gz`
+- On the "build machine":  `docker save nominatim_wrapper | gzip >nominatim_wrapper.tar.gz`
 - Transfer file nominatim_wrapper.tar.gz to the "run machine"
 - On the "run machine":  `docker load < nominatim_wrapper.tar.gz`
 
@@ -132,11 +135,4 @@ To build the docker image on a machine with Internet access ("build machine") an
 ## REST API
 
 `curl -X POST  "[docker ip]:5000/search/?street=chaussee+de+tervuren&city=Auderghem&postcode=1160"`
-
-# TODO 
-- supprimer "with_dask"
-- use_osm_parent à la bonne place
-- country (avec default country)
-- return city if street not found
-- osm_keep_relevant_results : sur base de l'input ou du dernier transform ?
 

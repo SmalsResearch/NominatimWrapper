@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[3]:
+# In[1]:
 
 
 import pandas as pd
@@ -40,19 +40,19 @@ logger.setLevel(logging.INFO)
 from config import *
 
 
-# In[3]:
+# In[2]:
 
 
 # !jupyter nbconvert --to python AddressCleanserUtils.ipynb
 
 
-# In[14]:
+# In[3]:
 
 
 within_jupyter=False
 
 
-# In[49]:
+# In[4]:
 
 
 
@@ -87,13 +87,13 @@ def vlog_display(df):
             vlog("\n"+str(df))
 
 
-# In[6]:
+# In[5]:
 
 
 pbar = ProgressBar(dt=1.0)
 
 
-# In[7]:
+# In[6]:
 
 
 # Mapping of nominatim results fields on our output fields
@@ -106,7 +106,7 @@ collapse_params = {
 }
 
 
-# In[8]:
+# In[7]:
 
 
 osm_addr_field = "osm_addr" # name of the field of the address sent to Nominatim
@@ -114,7 +114,7 @@ osm_addr_field = "osm_addr" # name of the field of the address sent to Nominatim
 similarity_threshold = 0.5
 
 
-# In[ ]:
+# In[8]:
 
 
 timestats = {"transformer": timedelta(0),
@@ -129,7 +129,7 @@ timestats = {"transformer": timedelta(0),
 
 # ## Global
 
-# In[10]:
+# In[9]:
 
 
 import unicodedata
@@ -141,7 +141,7 @@ def remove_accents(input_str):
     return u"".join([c for c in nfkd_form if not unicodedata.combining(c)])
 
 
-# In[2]:
+# In[10]:
 
 
 def house_number_compare(n1, n2):
@@ -172,7 +172,7 @@ def house_number_compare(n1, n2):
     return res
 
 
-# In[12]:
+# In[11]:
 
 
 def postcode_compare(s1, s2):
@@ -199,7 +199,7 @@ def postcode_compare(s1, s2):
     return sim
 
 
-# In[2]:
+# In[12]:
 
 
 def levenshtein_similarity(str1, str2):
@@ -212,7 +212,7 @@ def levenshtein_similarity(str1, str2):
 
 
 
-# In[3]:
+# In[13]:
 
 
 def inclusion_test(s1, s2):
@@ -232,7 +232,7 @@ def inclusion_test(s1, s2):
     return res
 
 
-# In[1]:
+# In[14]:
 
 
 # s1="NEU"
@@ -264,7 +264,7 @@ def fingerprint(column):
 
 
 
-# In[3]:
+# In[16]:
 
 
 # TODO : replacement seulement si dans les 2 inputs en même temps  --> Pour éviter que "Avenue Louise" et "Place Louise" aient une similarité de 100%
@@ -345,13 +345,13 @@ def street_compare(street1, street2, compare_algo = levenshtein_similarity):
     return street_distances["SIM_street"]
 
 
-# In[11]:
+# In[ ]:
 
 
 
 
 
-# In[19]:
+# In[17]:
 
 
 def city_compare(city1, city2, compare_algo = levenshtein_similarity):
@@ -367,7 +367,7 @@ def city_compare(city1, city2, compare_algo = levenshtein_similarity):
     return cities.fillna("").apply(lambda row : compare_algo(row.CITY1, row.CITY2), axis=1)
 
 
-# In[47]:
+# In[18]:
 
 
 def ignore_mismatch_keep_bests(addr_matches, addr_key_field, 
@@ -427,7 +427,7 @@ def ignore_mismatch_keep_bests(addr_matches, addr_key_field,
     return result_head, rejected.append(result_tail)
 
 
-# In[ ]:
+# In[19]:
 
 
 def retry_with_low_place_rank(osm_results, sent_addresses, street_field, housenbr_field,  postcode_field, city_field, country_field):
@@ -435,9 +435,9 @@ def retry_with_low_place_rank(osm_results, sent_addresses, street_field, housenb
     sent_addresses_26 = osm_results[osm_results.place_rank < 30].merge(sent_addresses)#[osm_addresses.place_rank == 26]
     
     vlog(f"    - <30: {sent_addresses_26.shape[0]}")
-    sent_addresses_26 = sent_addresses_26[~sent_addresses_26[housenbr_field].fillna("").str.match("^[0-9]*$")]
+    sent_addresses_26 = sent_addresses_26[~sent_addresses_26[housenbr_field].fillna("").astype(str).str.match("^[0-9]*$")]
     vlog(f"    - numbers: {sent_addresses_26.shape[0]}")
-    sent_addresses_26["housenbr_clean"] = sent_addresses_26[housenbr_field].str.extract("^([0-9]+)")[0]
+    sent_addresses_26["housenbr_clean"] = sent_addresses_26[housenbr_field].fillna("").astype(str).str.extract("^([0-9]+)")[0]
 
     sent_addresses_26["osm_addr_in"] =   sent_addresses_26[street_field  ].fillna("") + ", "+ sent_addresses_26["housenbr_clean"].fillna("") +", " +                                          sent_addresses_26[postcode_field].fillna("") + " " +sent_addresses_26[city_field    ].fillna("") +", "+                                          sent_addresses_26[country_field].fillna("")
 
@@ -462,7 +462,7 @@ def retry_with_low_place_rank(osm_results, sent_addresses, street_field, housenb
     return osm_results
 
 
-# In[ ]:
+# In[20]:
 
 
 def find_house_number(street, house_number):
@@ -483,7 +483,7 @@ def add_extra_house_number(osm_addresses, addresses, street_field, housenbr_fiel
     return result[np.concatenate([osm_addresses.keys(), ["extra_house_nbr"]])]
 
 
-# In[ ]:
+# In[21]:
 
 
 def transform_and_process(to_process_addresses, transformers, addr_key_field, street_field, housenbr_field, 
@@ -559,7 +559,7 @@ def transform_and_process(to_process_addresses, transformers, addr_key_field, st
 
 # ## OSM 
 
-# In[19]:
+# In[22]:
 
 
 def get_osm(addr, accept_language = ""): #lg = "en,fr,nl"
@@ -581,7 +581,7 @@ def get_osm(addr, accept_language = ""): #lg = "en,fr,nl"
     
 
 
-# In[22]:
+# In[23]:
 
 
 def get_osm_details(place_id): #lg = "en,fr,nl"
@@ -792,7 +792,7 @@ def osm_parse_and_split(df, osm_res_field, osm_addr_field, prefix="addr_", drop_
     return osm_results
 
 
-# In[27]:
+# In[26]:
 
 
 def osm_keep_relevant_results(osm_results, addresses, street_field,  housenbr_field, postcode_field, city_field, country_field, similarity_threshold,
@@ -811,7 +811,7 @@ def osm_keep_relevant_results(osm_results, addresses, street_field,  housenbr_fi
     return keep, reject
 
 
-# In[28]:
+# In[27]:
 
 
 def collapse(df, columns, prefix=None, method="fillna"):
@@ -835,7 +835,7 @@ def collapse(df, columns, prefix=None, method="fillna"):
     return res
 
 
-# In[ ]:
+# In[28]:
 
 
 def add_addr_out_columns(osm_results, prefix):
@@ -859,7 +859,7 @@ def add_addr_out_columns(osm_results, prefix):
 
 # # Transformers
 
-# In[ ]:
+# In[29]:
 
 
 def apply_transformers(addresses, transformers, addr_key_field, street_field, housenbr_field, postcode_field, city_field, country_field):
@@ -1086,7 +1086,7 @@ def photon_transformer(addresses, addr_key_field, street_field, housenbr_field, 
 
 # ## Libpostal
 
-# In[42]:
+# In[36]:
 
 
 
@@ -1109,7 +1109,7 @@ else:
     from postal.parser import parse_address
 
 
-# In[41]:
+# In[37]:
 
 
 lpost_street_field   = "lpost_road"
@@ -1119,7 +1119,7 @@ lpost_city_field     = "lpost_city"
 lpost_country_field  = "lpost_country"
 
 
-# In[1]:
+# In[38]:
 
 
 def libpostal_transformer(addresses, addr_key_field, street_field, housenbr_field, postcode_field, city_field, country_field,
@@ -1166,7 +1166,7 @@ def libpostal_transformer(addresses, addr_key_field, street_field, housenbr_fiel
 
 # ## Regex transformer
 
-# In[48]:
+# In[39]:
 
 
 def regex_transformer(addresses, addr_key_field, street_field, housenbr_field, postcode_field, city_field, 

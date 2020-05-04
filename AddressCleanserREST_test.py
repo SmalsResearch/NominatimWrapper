@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[49]:
+# In[5]:
 
 
 import pandas as pd
@@ -28,13 +28,13 @@ import matplotlib.pyplot as plt
 from IPython.display import display
 
 
-# In[50]:
+# In[10]:
 
 
-from config_KBO import * 
+from config_batch import * 
 
 
-# In[58]:
+# In[7]:
 
 
 def call_ws(addr_data): #lg = "en,fr,nl"
@@ -43,9 +43,10 @@ def call_ws(addr_data): #lg = "en,fr,nl"
     params = urllib.parse.urlencode({"street": addr_data[street_field],
                                      "housenumber": addr_data[housenbr_field],
                                      "city": addr_data[city_field],
-                                     "postcode": addr_data[postcode_field]
+                                     "postcode": addr_data[postcode_field],
+                                     "country": addr_data[country_field],
                                     })
-    url = "http://172.17.0.3:5000/search/?%s"%params
+    url = "http://172.26.0.1:5000/search/?%s"%params
     
     
     try:
@@ -60,7 +61,7 @@ def call_ws(addr_data): #lg = "en,fr,nl"
     
 
 
-# In[158]:
+# In[8]:
 
 
 def get_plots(addresses, column):
@@ -71,19 +72,25 @@ def get_plots(addresses, column):
     return fig
 
 
-# In[51]:
+# In[82]:
 
 
-addresses = get_addresses()
+addresses = get_addresses("address.csv.gz")
 
 
-# In[98]:
+# In[83]:
 
 
 display(addresses)
 
 
-# In[100]:
+# In[92]:
+
+
+addresses  =addresses.sample(50)
+
+
+# In[94]:
 
 
 with_dask = False
@@ -99,7 +106,7 @@ else:
     addresses["json"] = addresses.progress_apply(call_ws, axis=1)
 
 
-# In[101]:
+# In[86]:
 
 
 # Flask : 1:03
@@ -111,13 +118,13 @@ else:
 addresses
 
 
-# In[102]:
+# In[87]:
 
 
 addresses["status"]= addresses.json.apply(lambda d: "error" if "error" in d else "match" if "match" in d else "rejected")
 addresses["time"]  = addresses.json.apply(lambda d: d["time"])
 
-addresses["timing"]  = addresses.json.apply(lambda d: d["timing" if "timing" in d else {}])
+addresses["timing"]  = addresses.json.apply(lambda d: d["timing"] if "timing" in d else {})
 
 addresses["method"]= addresses.json.apply(lambda d: d["match"][0]["method"] if len(d)>0 and "match" in d else "none")
 addresses["street"]= addresses.json.apply(lambda d: d["match"][0]["addr_out_street"] if len(d)>0 and "match" in d else "")
@@ -126,103 +133,115 @@ addresses["street"]= addresses.json.apply(lambda d: d["match"][0]["addr_out_stre
 display(addresses.drop("json", axis=1))
 
 
-# In[ ]:
+# In[88]:
 
 
 addresses["timing"].apply(pd.Series)
 
 
-# In[103]:
+# In[89]:
 
 
 display(addresses.status.value_counts())
 
 
-# In[104]:
+# In[90]:
+
+
+addresses[addresses.status == "error"]
+
+
+# In[80]:
+
+
+# addresses[addresses.status == "error"].progress_apply(call_ws, axis=1)
+
+
+# In[91]:
 
 
 display(addresses.method.value_counts())
 
 
-# In[163]:
+# In[63]:
 
 
 addresses["_time"] = addresses.time.apply(lambda t: t.total_seconds())
 
 
-# In[ ]:
+# In[30]:
 
 
 print("Method : mean")
 
 
-# In[166]:
+# In[31]:
 
 
 display(addresses.groupby("method")._time.mean())
 
 
-# In[ ]:
+# In[32]:
 
 
 print("Method : std")
 
 
-# In[171]:
+# In[33]:
 
 
 display(addresses.groupby("method")._time.std())
 
 
-# In[170]:
+# In[ ]:
 
 
 
 
 
-# In[172]:
+# In[34]:
 
 
 print("Status : mean")
 
 
-# In[173]:
+# In[35]:
 
 
 display(addresses.groupby("status")._time.mean())
 
 
-# In[174]:
+# In[36]:
 
 
 print("Status : std")
 
 
-# In[175]:
+# In[37]:
 
 
 display(addresses.groupby("status")._time.std())
 
 
-# In[159]:
+# In[38]:
 
 
 fig = get_plots(addresses, "status")
 
 
-# In[160]:
+# In[39]:
 
 
 fig.savefig("time_per_status.png")
 
 
-# In[161]:
+# In[40]:
 
 
 fig = get_plots(addresses, "method")
 
 
-# In[162]:
+# In[41]:
 
 
 fig.savefig("time_per_method.png")

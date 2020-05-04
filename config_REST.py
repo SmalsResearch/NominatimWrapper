@@ -1,15 +1,13 @@
-street_field   = "adresse"
-housenbr_field = "numero"
-city_field     = "localite"
-postcode_field = "code_post"
-country_field = "pays"
+use_osm_parent = True
 
-addr_key_field = "clef_adresse"
+with_timing_info = False
 
-
-
-use_osm_parent = False
-
+street_field  = "street"
+housenbr_field = "housenumber"
+postcode_field = "postcode"
+city_field  =    "city"
+country_field =  "country"
+addr_key_field = "addr_key"
 
 regex_replacements = {
     "init": [
