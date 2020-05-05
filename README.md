@@ -70,14 +70,18 @@ Split in three containers : Photon, Libpostal, and NominatimWrapper
 
 ### Light version
 
-Based on "alpine" instead of Centos. Might be more difficult to build/use. Building time is much longer (many libraries have to be compiled), but image size is smaller (~6 GB vd 6.3 GB).
+Based on "alpine" instead of Centos. Might be more difficult to build/use. Building time is much longer (many libraries have to be compiled), but image size is smaller (~6 GB vs 6.3 GB).
 
 `docker-compose -f docker-compose_alp.yml build`
 
-
 ## Run 
 
-Below, "nominatim_wrapper" is the name of our the docker image, "nomin_wrapper", the name of the container
+Below, "nominatim_wrapper" is the name of our the docker image, "nomin_wrapper", the name of the container.
+
+Nominatim IP can be get by running : 
+
+`docker inspect nominatim |grep \"IPAd`
+
 
 - To keep the default parameters:   `docker run -d  --name nomin_wrapper nominatim_wrapper`
 - To change the default parameters: 
@@ -102,17 +106,16 @@ Then,
 
 `docker-compose -f docker-compose.yml up`
 
-
 ## Run batch
-
-- Get IP Address of Nominatim (if using docker) : `docker inspect nominatim |grep \"IPAd`
-- Get IP Address of Photon/Libpostal :  `docker inspect nomin_wrapper |grep \"IPAd`
-- Adapt file config_Batch.py accordingly (photon_host, libpostal_host, osm_host)
+- Adapt file config_batch.py according to your data file
 - Copy config file and addresses within container: 
-   - `docker cp config_Batch.py  nomin_wrapper:/nominatim_wrapper`
+   - `docker cp config_batch.py  nomin_wrapper:/NominatimWrapper`
    - `docker cp address.csv.gz   nomin_wrapper:/`
-- `docker exec -it nomin_wrapper python3 /nominatim_wrapper/AddressCleanserBatch.py -c config_Batch -a address.csv.gz`
- 
+- `docker exec -it nomin_wrapper python3 /NominatimWrapper/AddressCleanserBatch.py -c config_batch -a address.csv.gz`
+- Other available options: 
+   - '-s 1000': Take a sample of 1000 records
+   - '-q': quiet (less outputs)
+   - '-v': verbose (more outputs)
 
 ## Move
 
