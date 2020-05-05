@@ -2,6 +2,10 @@
 
 This tools can be seen as a wrapper around Nominatim (OpenStreetMap geocoder). It sends addresses to Nominatim (local or public instance), and for those giving no results, try several ways to make the addresses acceptable by Nominatim by "cleaning it".
 
+More explaination is given (in French) on: 
+- https://www.smalsresearch.be/geocodage-contourner-les-lacunes-dopenstreetmap-partie-1/
+- https://www.smalsresearch.be/geocodage-contourner-les-lacunes-dopenstreetmap-partie-2/
+
 It requires Nominatim, Photon and Libpostal.
 
 Nominatim should be provided separetely. 
