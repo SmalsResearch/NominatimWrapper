@@ -46,7 +46,7 @@ Our Docker build downloads Photon code, but you need to provide Data separetely.
 - To build the Elastic Search DB from the local Nominatim server: 
     - https://github.com/komoot/photon/#customized-search-data 
     - Should be done on the Nominatim machine! 
-    - For Belgium, photon data takes ~1.7 GB.
+    - For Belgium, photon data takes 900 MB.
 - To get the worldwide data : 
     - https://github.com/komoot/photon/#installation 
     - Takes ~53 Gb
@@ -55,7 +55,26 @@ Our Docker build downloads Photon code, but you need to provide Data separetely.
      - Find folder where "photon_data" is
      - `tar czf  photon.tar.gz photon_data/`
 
-
+- Assuming using mediagis/nominatim of above : 
+    - Get photon jar : `wget https://github.com/komoot/photon/releases/download/0.3.1/photon-0.3.1.jar`
+    - Copy it to the docker machine : `docker cp photon-0.3.1.jar nominatim:/`
+    - Enter the docker machine : `docker exec -it nominatim bash`
+    - Within the docker machine : 
+        - Add a postgresql password : 
+        ```
+            su postgres
+            psql
+            ALTER USER nominatim WITH ENCRYPTED PASSWORD 'mysecretpassword';
+            \q
+            exit
+         ```
+        - Build the Photon data: `java -jar photon-*.jar -nominatim-import -host localhost -port 5432 -database nominatim -user nominatim -password mysecretpassword -languages en,fr,nl`
+        - Warning: folder "photon_data" should not exist before running this java command. Please remove it if needed.
+        - Prepare the tar.gz file : `tar czf photon.tar.gz photon_data/`
+        - `exit`
+    - Get the tar.gz file : `tar czf photon.tar.gz photon_data/`
+    - Delete it on the nominatim machine : `tar czf photon.tar.gz photon_data/`
+    
 # Docker
 
 Go to the repository root folder (NominatimWrapper), and copy the file "photon.tar.gz" in "Docker" folder (see above)
