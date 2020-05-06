@@ -43,7 +43,7 @@ if env_lpost_host:
     libpostal_host = env_lpost_host
 else : 
     libpostal_host = "localhost:8080"
-    logging.info(f"Use default libpostal host: {photon_host}")
+    logging.info(f"Use default libpostal host: {libpostal_host}")
 
 
 

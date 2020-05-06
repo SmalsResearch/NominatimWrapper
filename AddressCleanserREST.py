@@ -17,6 +17,7 @@ from AddressCleanserUtils import *
 
 from IPython.display import display
 
+
 import sys, traceback
 
 from datetime import datetime, timedelta
@@ -47,7 +48,7 @@ from config_REST import *
 # gunicorn -w 8 -b 127.0.0.1:5000 wsgi:app
 
 
-# In[ ]:
+# In[2]:
 
 
 # !jupyter nbconvert --to python AddressCleanserREST.ipynb
@@ -66,12 +67,6 @@ AddressCleanserUtils.addr_key_field  = addr_key_field
 AddressCleanserUtils.regex_replacements = regex_replacements
 
 AddressCleanserUtils.use_osm_parent = use_osm_parent 
-
-
-# In[2]:
-
-
-"low".upper()
 
 
 # In[6]:
@@ -186,6 +181,38 @@ def process_address(data):
 # In[ ]:
 
 
+def process_addresses(to_process_addresses):
+    
+    all_reject = pd.DataFrame()
+    for transformers in transformers_sequence:
+        vlog ("--------------------------")
+        vlog("| Transformers : " + ";".join(transformers))
+        vlog ("--------------------------")
+
+        try :
+            osm_results, rejected, step_stats = transform_and_process(to_process_addresses, transformers, addr_key_field, 
+                                                                      street_field=street_field, housenbr_field=housenbr_field, 
+                                                                      postcode_field=postcode_field, city_field=city_field,
+                                                                      country_field=country_field)
+        except Exception as e: 
+            log(f"Error during processing : {e}")
+            traceback.print_exc(file=sys.stdout)
+            return {"error": str(e)}
+        
+        all_reject = all_reject.append(rejected, sort=False)
+        
+        vlog(step_stats)
+        if osm_results.shape[0] > 0:
+            osm_results = add_extra_house_number(osm_results, to_process_addresses, street_field=street_field, housenbr_field=housenbr_field)
+            
+            return osm_results #{"match": format_res(osm_results), "rejected": format_res(all_reject)}
+    
+    return None
+
+
+# In[ ]:
+
+
 def get_arg(argname, def_val):
     if argname in request.form: 
         return request.form[argname]
@@ -203,12 +230,13 @@ def search():
     for k in AddressCleanserUtils.timestats:
         AddressCleanserUtils.timestats[k]=timedelta(0)
         
-    data= {"street"      : get_arg("street", ""),
-           "housenumber" : get_arg("housenumber", ""),
-           "city"        : get_arg("city", ""),
-           "postcode"    : get_arg("postcode", ""),
-           "country"     : get_arg("country", "")
+    data= {street_field   : get_arg("street", ""),
+           housenbr_field : get_arg("housenumber", ""),
+           city_field     : get_arg("city", ""),
+           postcode_field : get_arg("postcode", ""),
+           country_field  : get_arg("country", "")
           }
+
     res = process_address(data)
     log(f"Input: {data}")
     log(f"Result: {res}")
@@ -219,4 +247,61 @@ def search():
     return jsonify(res)
 
 
+
+
+# In[ ]:
+
+
+UPLOAD_DIRECTORY = "/tmp/api_uploaded_files"
+
+if not os.path.exists(UPLOAD_DIRECTORY):
+    os.makedirs(UPLOAD_DIRECTORY)
+
+@app.route('/batch/', methods=['POST'])
+def batch():
+    log("batch")
+    
+    mode = "short"
+    if "mode" in request.form :
+        mode = request.form["mode"]
+
+   
+    
+    key_name = (list(request.files.keys())[0])
+    
+    #print(request.files[0])
+    
+    df = pd.read_csv(request.files[key_name], dtype=str)
+    log(df)
+    
+    mandatory_fields = [street_field, housenbr_field , postcode_field , city_field, country_field, addr_key_field]
+    for field in mandatory_fields:
+        if field not in df: 
+            return f"Field '{field} mandatory in file. All mandatory fields are {mandatory_fields}\n"
+    
+    res = process_addresses(df)
+    
+    if mode == "geo":
+        res = res[[addr_key_field,"lat", "lon", "place_rank"]]
+    elif mode == "short":
+        res = df.merge(res)[[addr_key_field,
+                   "lat", "lon", "place_rank", 
+                   "addr_out_street", "addr_out_number", "extra_house_nbr", "addr_out_postcode", "addr_out_city",   "addr_out_country" ]]
+    elif mode == "long":
+        res = df.merge(res)
+    else:
+        return f"Invalid mode {mode}"
+    
+    res["lat"]=res["lat"].astype(float)
+    res["lon"]=res["lon"].astype(float)
+    
+    log(res)
+    return res.to_json(orient="records")
+    #request.files:
+
+
+# In[3]:
+
+
+#! jupyter nbconvert --to python AddressCleanserREST.ipynb
 

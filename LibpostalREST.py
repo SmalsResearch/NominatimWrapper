@@ -36,7 +36,7 @@ app = Flask(__name__)
 def parser():
     query = get_arg("query", "")
            
-    res = parse_address(query)
+    res = parse_address(str(query))
     
     return jsonify(res)
 

@@ -28,6 +28,6 @@ services:
       - NB_WORKERS:2
       - PHOTON_HOST=photon:2322
       - LPOST_HOST=libpostal:8080
-      - OSM_HOST=172.26.0.1:7070 #10.1.0.45:7070
-      - LOG_LEVEL=low
+      - OSM_HOST=172.18.0.1:7070 #10.1.0.45:7070
+      - LOG_LEVEL=medim
       
