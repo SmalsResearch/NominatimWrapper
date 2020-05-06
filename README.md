@@ -72,7 +72,7 @@ Our Docker build downloads Photon code, but you need to provide Data separetely.
         - Warning: folder "photon_data" should not exist before running this java command. Please remove it if needed.
         - Prepare the tar.gz file : `tar czf photon.tar.gz photon_data/`
         - `exit`
-    - Get the tar.gz file : `tar czf photon.tar.gz photon_data/`
+    - Get the tar.gz file : `docker cp nominatim:photon.tar.gz .`
     - Delete it on the nominatim machine : `tar czf photon.tar.gz photon_data/`
     
 # Docker
