@@ -113,7 +113,7 @@ def get_row_dict(row, orig=False):
     if orig: 
         return row["osm_item_result"]
     else: 
-        to_copy_field = ["osm_id", "lat","lon","display_name", "place_rank", "method", "extra_house_nbr"] + list(collapse_params.keys())  + list(filter(lambda x: x.startswith("SIM"), row.index))
+        to_copy_field = ["osm_id", "place_id", "lat","lon","display_name", "place_rank", "method", "extra_house_nbr"] + list(collapse_params.keys())  + list(filter(lambda x: x.startswith("SIM"), row.index))
         res =  {}
 
         for f in to_copy_field:
@@ -121,7 +121,6 @@ def get_row_dict(row, orig=False):
                 res[f] = row[f]
 
         return res
-    
 
 
 # In[ ]:
@@ -162,6 +161,7 @@ def process_address(data):
                                                                       street_field=street_field, housenbr_field=housenbr_field, 
                                                                       postcode_field=postcode_field, city_field=city_field,
                                                                       country_field=country_field)
+            
         except Exception as e: 
             log(f"Error during processing : {e}")
             traceback.print_exc(file=sys.stdout)
@@ -207,10 +207,10 @@ def process_addresses(to_process_addresses):
             
             return osm_results #{"match": format_res(osm_results), "rejected": format_res(all_reject)}
     
-    return None
+    return pd.DataFrame()
 
 
-# In[ ]:
+# In[2]:
 
 
 def get_arg(argname, def_val):
@@ -234,9 +234,11 @@ def search():
            housenbr_field : get_arg("housenumber", ""),
            city_field     : get_arg("city", ""),
            postcode_field : get_arg("postcode", ""),
-           country_field  : get_arg("country", "")
-          }
+           country_field  : get_arg("country", ""),
 
+          }
+    no_reject = get_arg("noreject", False)
+   
     res = process_address(data)
     log(f"Input: {data}")
     log(f"Result: {res}")
@@ -244,6 +246,9 @@ def search():
     if with_timing_info: 
         res["timing"] = {k: AddressCleanserUtils.timestats[k].total_seconds() for k in AddressCleanserUtils.timestats}
     
+    if no_reject != False:
+        del res["rejected"]
+        
     return jsonify(res)
 
 
@@ -252,10 +257,7 @@ def search():
 # In[ ]:
 
 
-UPLOAD_DIRECTORY = "/tmp/api_uploaded_files"
-
-if not os.path.exists(UPLOAD_DIRECTORY):
-    os.makedirs(UPLOAD_DIRECTORY)
+# Call to this : curl -F media=@address_sample100.csv http://127.0.0.1:5000/batch/ -X POST -F mode=long
 
 @app.route('/batch/', methods=['POST'])
 def batch():
@@ -265,8 +267,6 @@ def batch():
     if "mode" in request.form :
         mode = request.form["mode"]
 
-   
-    
     key_name = (list(request.files.keys())[0])
     
     #print(request.files[0])
@@ -281,6 +281,10 @@ def batch():
     
     res = process_addresses(df)
     
+    
+    if res is None or res.shape[0] == 0:
+        return '[]'
+        
     if mode == "geo":
         res = res[[addr_key_field,"lat", "lon", "place_rank"]]
     elif mode == "short":
@@ -292,8 +296,8 @@ def batch():
     else:
         return f"Invalid mode {mode}"
     
-    res["lat"]=res["lat"].astype(float)
-    res["lon"]=res["lon"].astype(float)
+    res["lat"] = res["lat"].astype(float)
+    res["lon"] = res["lon"].astype(float)
     
     log(res)
     return res.to_json(orient="records")

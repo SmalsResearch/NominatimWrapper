@@ -2,10 +2,9 @@ FROM centos:7
 
 ARG photon_data
 
-RUN yum -y update
-
 # Install Python & Packages
-RUN yum -y install python3 python3-devel java git wget pbzip2 vim gcc
+RUN yum -y update && yum -y install python3 python3-devel java git wget pbzip2 vim gcc curl autoconf automake libtool pkgconfig make yum-utils && package-cleanup --leaves --all
+
 
 # TODO : remove vim
 
@@ -14,7 +13,6 @@ RUN pip3 install Flask gunicorn pandas numpy matplotlib requests dask dask[dataf
 
 # Install libpostal
 # https://github.com/openvenues/libpostal 
-RUN yum -y install curl autoconf automake libtool pkgconfig make
 
 RUN mkdir /libpostal_code
 RUN mkdir /libpostal_datadir

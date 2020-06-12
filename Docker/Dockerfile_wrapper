@@ -1,11 +1,7 @@
 FROM centos:7
 
-RUN yum -y update
-
 # Install Python & Packages
-RUN yum -y install python3 python3-devel gcc
-
-# TODO : remove vim
+RUN yum -y update && yum -y install python3 python3-devel gcc yum-utils && package-cleanup --leaves --all
 
 RUN pip3 install Flask gunicorn pandas numpy matplotlib requests dask dask[dataframe] toolz jellyfish tqdm fsspec IPython openpyxl==3.0.1 psutil bokeh
 

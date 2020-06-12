@@ -2,13 +2,11 @@ FROM centos:7
 
 ARG photon_data
 
-RUN yum -y update
+RUN yum -y update && yum -y install java wget  yum-utils && package-cleanup --leaves --all
 
-# Install Python & Packages
-RUN yum -y install java wget
 
 # Install Photon
-# TODO : try photo 0.3.2
+# TODO : try photon 0.3.2
 
 RUN mkdir /photon
 WORKDIR /photon
