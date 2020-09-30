@@ -21,7 +21,7 @@ tqdm.pandas(tqdm)
 # import jellyfish
 import dask.dataframe as dd
 
-from dask.multiprocessing import get
+# from dask.multiprocessing import get
 
 
 from importlib import reload

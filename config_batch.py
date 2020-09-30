@@ -57,9 +57,7 @@ regex_replacements =  {
 
 
 
-
 def get_addresses(addresses_filename):
-    
     addresses = pd.read_csv(addresses_filename,  
                             usecols = [addr_key_field,
                                        country_field, 
@@ -67,7 +65,9 @@ def get_addresses(addresses_filename):
                                        city_field, 
                                        street_field, 
                                        housenbr_field,
-                                       country_field])
+                                       country_field], 
+                           dtype={postcode_field: str, housenbr_field: str, country_field: str})
+    
     addresses[country_field] =addresses[country_field].fillna("Belgique")
     #addresses = addresses.rename(columns={"index":addr_key_field})
     

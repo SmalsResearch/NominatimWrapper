@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[5]:
+# In[1]:
 
 
 import pandas as pd
@@ -11,11 +11,11 @@ import numpy as np
 
 import json
 
-from tqdm.autonotebook import  tqdm
+import tqdm
 
 #%matplotlib inline
 
-tqdm.pandas(tqdm)
+tqdm.tqdm.pandas(tqdm)
 
 import dask.dataframe as dd
 
@@ -28,13 +28,33 @@ import matplotlib.pyplot as plt
 from IPython.display import display
 
 
-# In[10]:
+# In[2]:
+
+
+import urllib3
+
+
+# In[3]:
+
+
+http = urllib3.PoolManager()
+
+
+# In[5]:
 
 
 from config_batch import * 
 
 
-# In[7]:
+# # Functions
+
+# In[8]:
+
+
+ws_hostname = "127.0.0.1"
+
+
+# In[9]:
 
 
 def call_ws(addr_data): #lg = "en,fr,nl"
@@ -46,7 +66,7 @@ def call_ws(addr_data): #lg = "en,fr,nl"
                                      "postcode": addr_data[postcode_field],
                                      "country": addr_data[country_field],
                                     })
-    url = "http://172.26.0.1:5000/search/?%s"%params
+    url = f"http://{ws_hostname}:5000/search/?{params}"
     
     
     try:
@@ -61,190 +81,130 @@ def call_ws(addr_data): #lg = "en,fr,nl"
     
 
 
-# In[8]:
+# In[10]:
 
 
-def get_plots(addresses, column):
-    fig, axes = plt.subplots(ncols=1, nrows = addresses[column].nunique(),  sharex=True, figsize=[6, 3*addresses[column].nunique()])
+def call_ws_batch(addr_data, mode="geo"): #lg = "en,fr,nl"
+#     print(addr_data)
+#     print(addr_data.shape)
+#     print()
+    file_data = addr_data.rename(columns = {
+        street_field : "street",
+        housenbr_field: "housenumber",
+        postcode_field: "postcode",
+        city_field: "city",
+        country_field: "country",
+        addr_key_field : "addr_key"}).to_csv(index=False)
+    
+    r = http.request(
+    'POST',
+    f'http://{ws_hostname}:5000/batch',
+    fields= { 
+        'media': ('addresses.csv', file_data),
+        'mode': mode
+    })
+    
+    res = pd.DataFrame(json.loads(r.data.decode('utf-8')))
+#     display(res)
+    return res
 
-    addresses.hist(column="_time", by=column,ax=axes)
 
-    return fig
+# In[26]:
 
 
-# In[82]:
+def expand_json(addresses):
+    addresses["status"]= addresses.json.apply(lambda d: "error" if "error" in d else "match" if "match" in d else "rejected")
+    addresses["time"]  = addresses.json.apply(lambda d: d["time"])
+
+    addresses["timing"]  = addresses.json.apply(lambda d: d["timing"] if "timing" in d else {})
+
+    addresses["method"]= addresses.json.apply(lambda d: d["match"][0]["method"] if len(d)>0 and "match" in d else "none")
+    
+    for field in ["street", "number", "postcode", "city"]:
+        addresses[field]= addresses.json.apply(lambda d: d["match"][0]["addr_out_"+field] if len(d)>0 and "match" in d else "")
+    return 
+
+
+# # Calls
+
+# ## Single address calls
+
+# In[12]:
+
+
+call_ws({street_field: "Av. Fonsny", 
+          housenbr_field: "20",
+          city_field: "Saint-Gilles",
+          postcode_field:  "1060",
+          country_field: "Belgium"})
+
+
+# ## Batch calls (row by row)
+
+# In[6]:
 
 
 addresses = get_addresses("address.csv.gz")
+addresses = addresses.sample(100).copy()
 
 
-# In[83]:
+# ### Simple way
+
+# In[29]:
 
 
-display(addresses)
+addresses["json"] = addresses.progress_apply(call_ws, axis=1)
 
 
-# In[92]:
+# ### Using Dask
+
+# In[17]:
 
 
-addresses  =addresses.sample(50)
+dd_addresses = dd.from_pandas(addresses, npartitions=4)
 
+dask_task = dd_addresses.apply(call_ws, meta=('x', 'str'), axis=1)
 
-# In[94]:
-
-
-with_dask = False
-if with_dask : 
-    dd_addresses = dd.from_pandas(addresses, npartitions=4)
-
-    dask_task = dd_addresses.apply(call_ws, meta=('x', 'str'), axis=1)
-
-    with ProgressBar(): 
-        addresses["json"] = dask_task.compute()
-else: 
-    
-    addresses["json"] = addresses.progress_apply(call_ws, axis=1)
-
-
-# In[86]:
-
-
-# Flask : 1:03
-# gunicorn -w 1: 0:55
-# gunicorn -w 2, npartition=2: 0:30
-# gunicorn -w 2, npartition=4: 0:30
-# gunicorn -w 4, npartition=4: 0:33
-
-addresses
-
-
-# In[87]:
-
-
-addresses["status"]= addresses.json.apply(lambda d: "error" if "error" in d else "match" if "match" in d else "rejected")
-addresses["time"]  = addresses.json.apply(lambda d: d["time"])
-
-addresses["timing"]  = addresses.json.apply(lambda d: d["timing"] if "timing" in d else {})
-
-addresses["method"]= addresses.json.apply(lambda d: d["match"][0]["method"] if len(d)>0 and "match" in d else "none")
-addresses["street"]= addresses.json.apply(lambda d: d["match"][0]["addr_out_street"] if len(d)>0 and "match" in d else "")
-
-
-display(addresses.drop("json", axis=1))
-
-
-# In[88]:
-
-
-addresses["timing"].apply(pd.Series)
-
-
-# In[89]:
-
-
-display(addresses.status.value_counts())
-
-
-# In[90]:
-
-
-addresses[addresses.status == "error"]
-
-
-# In[80]:
-
-
-# addresses[addresses.status == "error"].progress_apply(call_ws, axis=1)
-
-
-# In[91]:
-
-
-display(addresses.method.value_counts())
-
-
-# In[63]:
-
-
-addresses["_time"] = addresses.time.apply(lambda t: t.total_seconds())
+with ProgressBar(): 
+    addresses["json"] = dask_task.compute()
 
 
 # In[30]:
 
 
-print("Method : mean")
+expand_json(addresses)
 
 
-# In[31]:
+# ## Batch calls (batch WS)
+
+# ### Single block
+
+# In[18]:
 
 
-display(addresses.groupby("method")._time.mean())
+# Only geocoding
+call_ws_batch(addresses)
 
 
-# In[32]:
+# In[19]:
 
 
-print("Method : std")
+# Geocode + address
+call_ws_batch(addresses, mode="short") 
 
 
-# In[33]:
+# ### Batch blocs
+
+# In[17]:
 
 
-display(addresses.groupby("method")._time.std())
+chunk_size = 50
+chunks = np.array_split(addresses, addresses.shape[0]//chunk_size)
 
 
-# In[ ]:
+res= [call_ws_batch(chunk, mode="short") for chunk in tqdm.tqdm(chunks)]
 
-
-
-
-
-# In[34]:
-
-
-print("Status : mean")
-
-
-# In[35]:
-
-
-display(addresses.groupby("status")._time.mean())
-
-
-# In[36]:
-
-
-print("Status : std")
-
-
-# In[37]:
-
-
-display(addresses.groupby("status")._time.std())
-
-
-# In[38]:
-
-
-fig = get_plots(addresses, "status")
-
-
-# In[39]:
-
-
-fig.savefig("time_per_status.png")
-
-
-# In[40]:
-
-
-fig = get_plots(addresses, "method")
-
-
-# In[41]:
-
-
-fig.savefig("time_per_method.png")
+## TODO : find a better way with dask? It seems that map_partitions does not support function returning dataframes. 
 
 
 # In[ ]:
