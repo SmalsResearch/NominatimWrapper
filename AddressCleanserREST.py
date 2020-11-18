@@ -181,33 +181,76 @@ def process_address(data):
 # In[ ]:
 
 
+# def process_addresses(to_process_addresses):
+    
+#     all_reject = pd.DataFrame()
+#     for transformers in transformers_sequence:
+#         vlog ("--------------------------")
+#         vlog("| Transformers : " + ";".join(transformers))
+#         vlog ("--------------------------")
+
+#         try :
+#             osm_results, rejected, step_stats = transform_and_process(to_process_addresses, transformers, addr_key_field, 
+#                                                                       street_field=street_field, housenbr_field=housenbr_field, 
+#                                                                       postcode_field=postcode_field, city_field=city_field,
+#                                                                       country_field=country_field)
+#         except Exception as e: 
+#             log(f"Error during processing : {e}")
+#             traceback.print_exc(file=sys.stdout)
+#             return {"error": str(e)}
+        
+#         all_reject = all_reject.append(rejected, sort=False)
+        
+#         vlog(step_stats)
+#         if osm_results.shape[0] > 0:
+#             osm_results = add_extra_house_number(osm_results, to_process_addresses, street_field=street_field, housenbr_field=housenbr_field)
+            
+#             return osm_results #{"match": format_res(osm_results), "rejected": format_res(all_reject)}
+    
+#     return pd.DataFrame()
+
+
+# In[ ]:
+
+
 def process_addresses(to_process_addresses):
     
     all_reject = pd.DataFrame()
+    osm_addresses        = pd.DataFrame()
+    rejected_addresses   = pd.DataFrame()
+    
+    chunk = to_process_addresses.copy()
+    
     for transformers in transformers_sequence:
         vlog ("--------------------------")
-        vlog("| Transformers : " + ";".join(transformers))
+        log(f"Transformers ({chunk.shape[0]:3} records): " + ";".join(transformers))
         vlog ("--------------------------")
 
         try :
-            osm_results, rejected, step_stats = transform_and_process(to_process_addresses, transformers, addr_key_field, 
+            osm_results, rejected, step_stats = transform_and_process(chunk, transformers, addr_key_field, 
                                                                       street_field=street_field, housenbr_field=housenbr_field, 
                                                                       postcode_field=postcode_field, city_field=city_field,
                                                                       country_field=country_field)
+            
+            osm_addresses =      osm_addresses.append(osm_results, sort=False).drop_duplicates()
+            rejected_addresses = rejected_addresses.append(rejected, sort=False).drop_duplicates()
+            
         except Exception as e: 
             log(f"Error during processing : {e}")
             traceback.print_exc(file=sys.stdout)
             return {"error": str(e)}
         
-        all_reject = all_reject.append(rejected, sort=False)
+        chunk  = chunk[~chunk[addr_key_field].isin(osm_results[addr_key_field])].copy()
+        
+        #all_reject = all_reject.append(rejected, sort=False)
         
         vlog(step_stats)
-        if osm_results.shape[0] > 0:
-            osm_results = add_extra_house_number(osm_results, to_process_addresses, street_field=street_field, housenbr_field=housenbr_field)
+    if osm_addresses.shape[0] > 0:
+        osm_addresses = add_extra_house_number(osm_addresses, to_process_addresses, street_field=street_field, housenbr_field=housenbr_field)
             
-            return osm_results #{"match": format_res(osm_results), "rejected": format_res(all_reject)}
+    return osm_addresses #{"match": format_res(osm_results), "rejected": format_res(all_reject)}
     
-    return pd.DataFrame()
+#     return pd.DataFrame()
 
 
 # In[2]:
@@ -281,6 +324,9 @@ def batch():
     
     res = process_addresses(df)
     
+    if type(res) == dict :
+        return {0:res}
+
     
     if res is None or res.shape[0] == 0:
         return '[]'

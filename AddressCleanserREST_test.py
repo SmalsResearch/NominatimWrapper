@@ -40,7 +40,7 @@ import urllib3
 http = urllib3.PoolManager()
 
 
-# In[5]:
+# In[4]:
 
 
 from config_batch import * 
@@ -48,13 +48,13 @@ from config_batch import *
 
 # # Functions
 
-# In[8]:
+# In[5]:
 
 
 ws_hostname = "127.0.0.1"
 
 
-# In[9]:
+# In[6]:
 
 
 def call_ws(addr_data): #lg = "en,fr,nl"
@@ -81,7 +81,7 @@ def call_ws(addr_data): #lg = "en,fr,nl"
     
 
 
-# In[10]:
+# In[29]:
 
 
 def call_ws_batch(addr_data, mode="geo"): #lg = "en,fr,nl"
@@ -104,12 +104,13 @@ def call_ws_batch(addr_data, mode="geo"): #lg = "en,fr,nl"
         'mode': mode
     })
     
+#     print(r.data.decode('utf-8'))
     res = pd.DataFrame(json.loads(r.data.decode('utf-8')))
 #     display(res)
     return res
 
 
-# In[26]:
+# In[8]:
 
 
 def expand_json(addresses):
@@ -129,7 +130,7 @@ def expand_json(addresses):
 
 # ## Single address calls
 
-# In[12]:
+# In[11]:
 
 
 call_ws({street_field: "Av. Fonsny", 
@@ -141,7 +142,7 @@ call_ws({street_field: "Av. Fonsny",
 
 # ## Batch calls (row by row)
 
-# In[6]:
+# In[36]:
 
 
 addresses = get_addresses("address.csv.gz")
@@ -179,18 +180,25 @@ expand_json(addresses)
 
 # ### Single block
 
-# In[18]:
+# In[42]:
 
 
 # Only geocoding
 call_ws_batch(addresses)
 
 
-# In[19]:
+# In[47]:
 
 
 # Geocode + address
-call_ws_batch(addresses, mode="short") 
+x = call_ws_batch(addresses, mode="long") 
+x
+
+
+# In[44]:
+
+
+x.method.value_counts()
 
 
 # ### Batch blocs

@@ -573,12 +573,14 @@ def get_osm(addr, accept_language = ""): #lg = "en,fr,nl"
     
     url = "http://%s/search.php?%s"%(osm_host, params)
     
-    with urllib.request.urlopen(url) as response:
-        res = response.read()
-        res = json.loads(res)
-#         return res
-        return [ {field: item[field] for field in ["place_id", "lat", "lon", "display_name", "address", "namedetails", "place_rank", "category", "type"]} for item in res] 
-    
+    try: 
+        with urllib.request.urlopen(url) as response:
+            res = response.read()
+            res = json.loads(res)
+    #         return res
+            return [ {field: item[field] for field in ["place_id", "lat", "lon", "display_name", "address", "namedetails", "place_rank", "category", "type"]} for item in res] 
+    except Exception as e:
+        raise Exception (f"Cannot get OSM results ({osm_host}): {e}") 
 
 
 # In[23]:
@@ -943,12 +945,12 @@ def get_photon(addr):
     params = urllib.parse.urlencode({"q": addr})
     url = "http://%s/api?%s"%(photon_host, params)
 
-#     try:
-    with urllib.request.urlopen(url) as response:
-        res = response.read()
-        return json.loads(res)
-#     except Exception as e:
-#         return '{{"error": "Cannot connect to Photon ({}) {}"}}'.format(photon_host, str(e))
+    try:
+        with urllib.request.urlopen(url) as response:
+            res = response.read()
+            return json.loads(res)
+    except Exception as e:
+         raise Exception (f"Cannot connect to Photon ({photon_host}):  {e}")
     
 
 
@@ -1100,7 +1102,11 @@ if with_rest_libpostal:
         url = "http://%s/parser"%(libpostal_host)
         params = {"query": address}
 
-        res = requests.post(url, json = params)
+        try: 
+            res = requests.post(url, json = params)
+        except Exception as e:
+             raise Exception (f"Cannot connect to Libpostal ({photon_host}): {e}")
+    
         res = json.loads(res.content.decode())
 
         return res
