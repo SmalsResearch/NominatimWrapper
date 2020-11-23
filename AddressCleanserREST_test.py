@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
+# In[77]:
 
 
 import pandas as pd
@@ -11,11 +11,11 @@ import numpy as np
 
 import json
 
-import tqdm
+from tqdm.autonotebook import tqdm
 
 #%matplotlib inline
 
-tqdm.tqdm.pandas(tqdm)
+tqdm.pandas(tqdm)
 
 import dask.dataframe as dd
 
@@ -130,7 +130,7 @@ def expand_json(addresses):
 
 # ## Single address calls
 
-# In[11]:
+# In[83]:
 
 
 call_ws({street_field: "Av. Fonsny", 
@@ -142,11 +142,11 @@ call_ws({street_field: "Av. Fonsny",
 
 # ## Batch calls (row by row)
 
-# In[36]:
+# In[72]:
 
 
 addresses = get_addresses("address.csv.gz")
-addresses = addresses.sample(100).copy()
+addresses = addresses.sample(1000).copy()
 
 
 # ### Simple way
@@ -191,32 +191,49 @@ call_ws_batch(addresses)
 
 
 # Geocode + address
-x = call_ws_batch(addresses, mode="long") 
-x
-
-
-# In[44]:
-
-
-x.method.value_counts()
+call_ws_batch(addresses, mode="long") 
 
 
 # ### Batch blocs
 
-# In[17]:
+# In[106]:
 
 
-chunk_size = 50
+chunk_size = 250
 chunks = np.array_split(addresses, addresses.shape[0]//chunk_size)
 
-
-res= [call_ws_batch(chunk, mode="short") for chunk in tqdm.tqdm(chunks)]
+res= [call_ws_batch(chunk, mode="long") for chunk in tqdm(chunks)]
 
 ## TODO : find a better way with dask? It seems that map_partitions does not support function returning dataframes. 
+#50: 4:04
+#100 : 2:30
+#250 : 2:04
+#1000 : 1:37
+
+
+# In[107]:
+
+
+df_res = pd.concat(res, sort=False)
+df_res
+
+
+# In[108]:
+
+
+df_res.method.value_counts()
 
 
 # In[ ]:
 
 
-
+1000 : 
+orig                                   832
+regex[init]                            102
+libpostal+regex[lpost]+photon           35
+nonum                                    9
+libpostal+regex[lpost]+photon+nonum      3
+photon                                   3
+libpostal+regex[lpost]                   2
+nostreet                                 1
 

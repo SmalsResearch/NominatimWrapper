@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[3]:
+# In[1]:
 
 
 from flask import Flask,  request,jsonify
@@ -23,7 +23,7 @@ import sys, traceback
 from datetime import datetime, timedelta
 
 
-# In[ ]:
+# In[2]:
 
 
 import config_REST
@@ -37,7 +37,7 @@ from config_REST import *
 
 
 
-# In[ ]:
+# In[3]:
 
 
 # TO RUN : 
@@ -48,13 +48,13 @@ from config_REST import *
 # gunicorn -w 8 -b 127.0.0.1:5000 wsgi:app
 
 
-# In[2]:
+# In[4]:
 
 
 # !jupyter nbconvert --to python AddressCleanserREST.ipynb
 
 
-# In[1]:
+# In[5]:
 
 
 # AddressCleanserUtils.pbar.unregister()
@@ -93,7 +93,7 @@ else :
 
 
 
-# In[ ]:
+# In[7]:
 
 
 def get_init_df(data):
@@ -106,7 +106,7 @@ def get_init_df(data):
                           }])
 
 
-# In[ ]:
+# In[8]:
 
 
 def get_row_dict(row, orig=False):
@@ -123,14 +123,14 @@ def get_row_dict(row, orig=False):
         return res
 
 
-# In[ ]:
+# In[9]:
 
 
 def format_res(res):
     return list(res.fillna("").apply(lambda row: get_row_dict(row, False), axis=1))
 
 
-# In[1]:
+# In[10]:
 
 
 transformers_sequence = [ ["orig"],
@@ -178,39 +178,7 @@ def process_address(data):
     return {"rejected": format_res(all_reject)}
 
 
-# In[ ]:
-
-
-# def process_addresses(to_process_addresses):
-    
-#     all_reject = pd.DataFrame()
-#     for transformers in transformers_sequence:
-#         vlog ("--------------------------")
-#         vlog("| Transformers : " + ";".join(transformers))
-#         vlog ("--------------------------")
-
-#         try :
-#             osm_results, rejected, step_stats = transform_and_process(to_process_addresses, transformers, addr_key_field, 
-#                                                                       street_field=street_field, housenbr_field=housenbr_field, 
-#                                                                       postcode_field=postcode_field, city_field=city_field,
-#                                                                       country_field=country_field)
-#         except Exception as e: 
-#             log(f"Error during processing : {e}")
-#             traceback.print_exc(file=sys.stdout)
-#             return {"error": str(e)}
-        
-#         all_reject = all_reject.append(rejected, sort=False)
-        
-#         vlog(step_stats)
-#         if osm_results.shape[0] > 0:
-#             osm_results = add_extra_house_number(osm_results, to_process_addresses, street_field=street_field, housenbr_field=housenbr_field)
-            
-#             return osm_results #{"match": format_res(osm_results), "rejected": format_res(all_reject)}
-    
-#     return pd.DataFrame()
-
-
-# In[ ]:
+# In[12]:
 
 
 def process_addresses(to_process_addresses):
@@ -236,24 +204,32 @@ def process_addresses(to_process_addresses):
             rejected_addresses = rejected_addresses.append(rejected, sort=False).drop_duplicates()
             
         except Exception as e: 
+            osm_results = chunk[[addr_key_field]]
+            osm_results["method"] = "error on " + ";".join(transformers)
+            osm_addresses =      osm_addresses.append(osm_results, sort=False).drop_duplicates()
+            
             log(f"Error during processing : {e}")
             traceback.print_exc(file=sys.stdout)
-            return {"error": str(e)}
+#             return {"error": str(e)}
         
         chunk  = chunk[~chunk[addr_key_field].isin(osm_results[addr_key_field])].copy()
         
         #all_reject = all_reject.append(rejected, sort=False)
+        if chunk.shape[0]==0:
+            break
+            
         
         vlog(step_stats)
     if osm_addresses.shape[0] > 0:
         osm_addresses = add_extra_house_number(osm_addresses, to_process_addresses, street_field=street_field, housenbr_field=housenbr_field)
-            
+          
+    log(osm_addresses.method.value_counts())
     return osm_addresses #{"match": format_res(osm_results), "rejected": format_res(all_reject)}
     
 #     return pd.DataFrame()
 
 
-# In[2]:
+# In[13]:
 
 
 def get_arg(argname, def_val):
@@ -297,7 +273,7 @@ def search():
 
 
 
-# In[ ]:
+# In[14]:
 
 
 # Call to this : curl -F media=@address_sample100.csv http://127.0.0.1:5000/batch/ -X POST -F mode=long
@@ -315,7 +291,7 @@ def batch():
     #print(request.files[0])
     
     df = pd.read_csv(request.files[key_name], dtype=str)
-    log(df)
+    log("Input: \n" + df.to_string(max_rows=10))
     
     mandatory_fields = [street_field, housenbr_field , postcode_field , city_field, country_field, addr_key_field]
     for field in mandatory_fields:
@@ -331,26 +307,32 @@ def batch():
     if res is None or res.shape[0] == 0:
         return '[]'
         
-    if mode == "geo":
-        res = res[[addr_key_field,"lat", "lon", "place_rank"]]
-    elif mode == "short":
-        res = df.merge(res)[[addr_key_field,
-                   "lat", "lon", "place_rank", 
-                   "addr_out_street", "addr_out_number", "extra_house_nbr", "addr_out_postcode", "addr_out_city",   "addr_out_country" ]]
-    elif mode == "long":
-        res = df.merge(res)
-    else:
-        return f"Invalid mode {mode}"
+    try: 
+        if mode == "geo":
+            res = res[[addr_key_field,"lat", "lon", "place_rank", "method"]]
+        elif mode == "short":
+            res = df.merge(res)[[addr_key_field,
+                       "lat", "lon", "place_rank", "method",
+                       "addr_out_street", "addr_out_number", "extra_house_nbr", "addr_out_postcode", "addr_out_city",   "addr_out_country" ]]
+        elif mode == "long":
+            res = df.merge(res)
+        else:
+            return f"Invalid mode {mode}"
+
+        res["lat"] = res["lat"].astype(float)
+        res["lon"] = res["lon"].astype(float)
+    except KeyError as e:
+        log(f"Error during column selection: {e}")
+        traceback.print_exc(file=sys.stdout)
+        
+    log("Output: \n"+res.iloc[:, 0:9].to_string(max_rows=9))
     
-    res["lat"] = res["lat"].astype(float)
-    res["lon"] = res["lon"].astype(float)
     
-    log(res)
     return res.to_json(orient="records")
     #request.files:
 
 
-# In[3]:
+# In[15]:
 
 
 #! jupyter nbconvert --to python AddressCleanserREST.ipynb
