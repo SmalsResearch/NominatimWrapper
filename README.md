@@ -81,21 +81,23 @@ Go to the repository root folder (NominatimWrapper), and copy the file "photon.t
 
 ## Build
 
-Only one container, embedding Libpostal, Photon and NominatimWrapper 
-
-`docker build -f Docker/Dockerfile -t nominatim_wrapper --build-arg photon_data=Docker/photon.tar.gz .`
-
 ### Build with docker-compose
 Split in three containers : Photon, Libpostal, and NominatimWrapper
 
 `docker-compose -f docker-compose.yml build`
-
 
 ### Light version
 
 Based on "alpine" instead of Centos. Might be more difficult to build/use. Building time is much longer (many libraries have to be compiled), but image size is smaller (~6 GB vs 6.3 GB).
 
 `docker-compose -f docker-compose_alp.yml build`
+
+### One container
+Only one container, embedding Libpostal, Photon and NominatimWrapper 
+
+`docker build -f Docker/Dockerfile -t nominatim_wrapper --build-arg photon_data=Docker/photon.tar.gz .`
+
+
 
 ## Run 
 

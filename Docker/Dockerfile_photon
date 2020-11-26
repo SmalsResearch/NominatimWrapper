@@ -2,8 +2,7 @@ FROM centos:7
 
 ARG photon_data
 
-RUN yum -y update && yum -y install java wget  yum-utils && package-cleanup --leaves --all
-
+RUN yum -y update && yum -y install java-1.8.0 wget yum-utils && package-cleanup --leaves --all
 
 # Install Photon
 # TODO : try photon 0.3.2
