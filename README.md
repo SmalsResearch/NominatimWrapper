@@ -56,7 +56,7 @@ Our Docker build downloads Photon code, but you need to provide Data separetely.
      - `tar czf  photon.tar.gz photon_data/`
 
 - Assuming using mediagis/nominatim of above : 
-    - Get photon jar : `wget https://github.com/komoot/photon/releases/download/0.3.1/photon-0.3.1.jar`
+    - Get photon jar : `wget https://github.com/komoot/photon/releases/download/0.3.4/photon-0.3.4.jar`
     - Copy it to the docker machine : `docker cp photon-0.3.1.jar nominatim:/`
     - Enter the docker machine : `docker exec -it nominatim bash`
     - Within the docker machine : 
@@ -73,7 +73,7 @@ Our Docker build downloads Photon code, but you need to provide Data separetely.
         - Prepare the tar.gz file : `tar czf photon.tar.gz photon_data/`
         - `exit`
     - Get the tar.gz file : `docker cp nominatim:photon.tar.gz .`
-    - Delete it on the nominatim machine : `tar czf photon.tar.gz photon_data/`
+    - Delete files (photon-0.3.1.jar and photon.tar.gz )
     
 # Docker
 
