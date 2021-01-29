@@ -8,6 +8,7 @@ from flask import Flask,  request,jsonify
 
 import pandas as pd
 
+
 import os
 
 from  importlib import reload
@@ -29,12 +30,6 @@ from datetime import datetime, timedelta
 import config_REST
 reload(config_REST)
 from config_REST import *
-
-
-# In[ ]:
-
-
-
 
 
 # In[3]:
@@ -113,7 +108,7 @@ def get_row_dict(row, orig=False):
     if orig: 
         return row["osm_item_result"]
     else: 
-        to_copy_field = ["osm_id", "place_id", "lat","lon","display_name", "place_rank", "method", "extra_house_nbr"] + list(collapse_params.keys())  + list(filter(lambda x: x.startswith("SIM"), row.index))
+        to_copy_field = ["osm_id", "place_id", "lat","lon","display_name", "place_rank", "method", "extra_house_nbr", "reject_reason"] + list(collapse_params.keys())  + list(filter(lambda x: x.startswith("SIM"), row.index))
         res =  {}
 
         for f in to_copy_field:
@@ -224,7 +219,7 @@ def process_addresses(to_process_addresses):
         osm_addresses = add_extra_house_number(osm_addresses, to_process_addresses, street_field=street_field, housenbr_field=housenbr_field)
           
     log(osm_addresses.method.value_counts())
-    return osm_addresses #{"match": format_res(osm_results), "rejected": format_res(all_reject)}
+    return osm_addresses, rejected_addresses #{"match": format_res(osm_results), "rejected": format_res(all_reject)}
     
 #     return pd.DataFrame()
 
@@ -273,6 +268,14 @@ def search():
 
 
 
+# In[ ]:
+
+
+def remove_empty_values(dct_lst):
+    # Remove empty values in a list of dict
+    return [{k: v for k, v in item.items() if not pd.isnull(v) and v != ""} for item in dct_lst]
+
+
 # In[14]:
 
 
@@ -285,6 +288,10 @@ def batch():
     mode = "short"
     if "mode" in request.form :
         mode = request.form["mode"]
+    
+    with_reject = mode.endswith(",reject")
+    
+    mode = mode.replace(",reject", "")
 
     key_name = (list(request.files.keys())[0])
     
@@ -298,7 +305,8 @@ def batch():
         if field not in df: 
             return f"Field '{field} mandatory in file. All mandatory fields are {mandatory_fields}\n"
     
-    res = process_addresses(df)
+    res, rejected_addresses = process_addresses(df)
+    
     
     if type(res) == dict :
         return {0:res}
@@ -316,8 +324,14 @@ def batch():
                        "addr_out_street", "addr_out_number", "extra_house_nbr", "addr_out_postcode", "addr_out_city",   "addr_out_country" ]]
         elif mode == "long":
             res = df.merge(res)
+            
         else:
-            return f"Invalid mode {mode}"
+            return {"error": f"Invalid mode {mode}"}
+        
+        if with_reject:
+            rejected_rec = rejected_addresses.groupby(addr_key_field).apply(lambda rec: remove_empty_values(rec.to_dict(orient="records")) ).rename("rejected").reset_index()
+            res = res.merge(rejected_rec, how="outer")
+
 
         res["lat"] = res["lat"].astype(float)
         res["lon"] = res["lon"].astype(float)
@@ -327,7 +341,6 @@ def batch():
         
     log("Output: \n"+res.iloc[:, 0:9].to_string(max_rows=9))
     
-    
     return res.to_json(orient="records")
     #request.files:
 
@@ -336,4 +349,10 @@ def batch():
 
 
 #! jupyter nbconvert --to python AddressCleanserREST.ipynb
+
+
+# In[23]:
+
+
+
 

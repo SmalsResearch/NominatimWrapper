@@ -533,7 +533,7 @@ def transform_and_process(to_process_addresses, transformers, addr_key_field, st
                                         street_field=street_field, housenbr_field=housenbr_field, 
                                         postcode_field=postcode_field, city_field=city_field,
                                         country_field=country_field)
-
+    
     if with_cleansed_number_on_26 and osm_results.shape[0]>0 : 
 
         osm_results = retry_with_low_place_rank(osm_results, sent_addresses, 
@@ -740,10 +740,10 @@ def process_osm(df, osm_addr_field, addr_key_field, street_field, housenbr_field
         osm_reject["SIM_zip"]= np.NaN
         osm_reject["reject_reason"] = "tail"
         osm_results = result_head
-        
+      
         
     vlog("     - Done!")
-    return osm_results[[osm_addr_field, addr_key_field, "place_id", "lat", "lon", "display_name", "namedetails", "place_rank", "category", "type", "SIM_street_which", "SIM_street"] + list(collapse_params.keys()) + ["addr_out_other"] ], osm_reject
+    return osm_results[[osm_addr_field, addr_key_field, "place_id", "lat", "lon", "display_name", "namedetails", "place_rank", "category", "type", "SIM_street_which", "SIM_street", "SIM_city", "SIM_zip", "SIM_house_nbr"] + list(collapse_params.keys()) + ["addr_out_other"] ], osm_reject
     
 
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[77]:
+# In[2]:
 
 
 import pandas as pd
@@ -15,7 +15,7 @@ from tqdm.autonotebook import tqdm
 
 #%matplotlib inline
 
-tqdm.pandas(tqdm)
+tqdm.pandas()
 
 import dask.dataframe as dd
 
@@ -28,19 +28,19 @@ import matplotlib.pyplot as plt
 from IPython.display import display
 
 
-# In[2]:
+# In[3]:
 
 
 import urllib3
 
 
-# In[3]:
+# In[4]:
 
 
 http = urllib3.PoolManager()
 
 
-# In[4]:
+# In[5]:
 
 
 from config_batch import * 
@@ -48,13 +48,14 @@ from config_batch import *
 
 # # Functions
 
-# In[5]:
-
-
-ws_hostname = "127.0.0.1"
-
-
 # In[6]:
+
+
+ws_hostname = "127.0.1.1"
+# ws_hostname = "192.168.1.3"
+
+
+# In[7]:
 
 
 def call_ws(addr_data): #lg = "en,fr,nl"
@@ -81,7 +82,7 @@ def call_ws(addr_data): #lg = "en,fr,nl"
     
 
 
-# In[29]:
+# In[30]:
 
 
 def call_ws_batch(addr_data, mode="geo"): #lg = "en,fr,nl"
@@ -110,7 +111,7 @@ def call_ws_batch(addr_data, mode="geo"): #lg = "en,fr,nl"
     return res
 
 
-# In[8]:
+# In[9]:
 
 
 def expand_json(addresses):
@@ -130,7 +131,7 @@ def expand_json(addresses):
 
 # ## Single address calls
 
-# In[83]:
+# In[12]:
 
 
 call_ws({street_field: "Av. Fonsny", 
@@ -140,13 +141,19 @@ call_ws({street_field: "Av. Fonsny",
           country_field: "Belgium"})
 
 
+# In[17]:
+
+
+
+
+
 # ## Batch calls (row by row)
 
-# In[72]:
+# In[31]:
 
 
 addresses = get_addresses("address.csv.gz")
-addresses = addresses.sample(1000).copy()
+addresses = addresses.sample(10).copy()
 
 
 # ### Simple way
@@ -180,26 +187,39 @@ expand_json(addresses)
 
 # ### Single block
 
-# In[42]:
+# In[15]:
 
 
 # Only geocoding
 call_ws_batch(addresses)
 
 
-# In[47]:
+# In[27]:
 
 
 # Geocode + address
-call_ws_batch(addresses, mode="long") 
+res = call_ws_batch(addresses, mode="long") 
+res
+
+
+# In[29]:
+
+
+res.method.value_counts()
+
+
+# In[28]:
+
+
+addresses[~addresses.EntityNumber.isin(res.addr_key)]
 
 
 # ### Batch blocs
 
-# In[106]:
+# In[29]:
 
 
-chunk_size = 250
+chunk_size = 10
 chunks = np.array_split(addresses, addresses.shape[0]//chunk_size)
 
 res= [call_ws_batch(chunk, mode="long") for chunk in tqdm(chunks)]
@@ -211,14 +231,14 @@ res= [call_ws_batch(chunk, mode="long") for chunk in tqdm(chunks)]
 #1000 : 1:37
 
 
-# In[107]:
+# In[30]:
 
 
 df_res = pd.concat(res, sort=False)
 df_res
 
 
-# In[108]:
+# In[31]:
 
 
 df_res.method.value_counts()
@@ -227,13 +247,11 @@ df_res.method.value_counts()
 # In[ ]:
 
 
-1000 : 
-orig                                   832
-regex[init]                            102
-libpostal+regex[lpost]+photon           35
-nonum                                    9
-libpostal+regex[lpost]+photon+nonum      3
-photon                                   3
-libpostal+regex[lpost]                   2
-nostreet                                 1
+
+
+
+# In[ ]:
+
+
+
 
