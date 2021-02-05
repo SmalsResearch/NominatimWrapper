@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[2]:
+# In[6]:
 
 
 import pandas as pd
@@ -28,19 +28,19 @@ import matplotlib.pyplot as plt
 from IPython.display import display
 
 
-# In[3]:
+# In[7]:
 
 
 import urllib3
 
 
-# In[4]:
+# In[8]:
 
 
 http = urllib3.PoolManager()
 
 
-# In[5]:
+# In[9]:
 
 
 from config_batch import * 
@@ -48,14 +48,14 @@ from config_batch import *
 
 # # Functions
 
-# In[6]:
+# In[10]:
 
 
 ws_hostname = "127.0.1.1"
 # ws_hostname = "192.168.1.3"
 
 
-# In[7]:
+# In[11]:
 
 
 def call_ws(addr_data): #lg = "en,fr,nl"
@@ -82,10 +82,10 @@ def call_ws(addr_data): #lg = "en,fr,nl"
     
 
 
-# In[30]:
+# In[51]:
 
 
-def call_ws_batch(addr_data, mode="geo"): #lg = "en,fr,nl"
+def call_ws_batch(addr_data, mode="geo", with_reject=False): #lg = "en,fr,nl"
 #     print(addr_data)
 #     print(addr_data.shape)
 #     print()
@@ -102,16 +102,21 @@ def call_ws_batch(addr_data, mode="geo"): #lg = "en,fr,nl"
     f'http://{ws_hostname}:5000/batch',
     fields= { 
         'media': ('addresses.csv', file_data),
-        'mode': mode
+        'mode': mode,
+        "with_rejected" : "yes" if with_reject else "no"
     })
     
-#     print(r.data.decode('utf-8'))
-    res = pd.DataFrame(json.loads(r.data.decode('utf-8')))
+    try:
+        res = pd.DataFrame(json.loads(r.data.decode('utf-8')))
+    except ValueError:
+        print("Cannot decode result:")
+        print(json.loads(r.data.decode('utf-8')))
+        return 
 #     display(res)
     return res
 
 
-# In[9]:
+# In[13]:
 
 
 def expand_json(addresses):
@@ -131,34 +136,28 @@ def expand_json(addresses):
 
 # ## Single address calls
 
-# In[12]:
+# In[53]:
 
 
-call_ws({street_field: "Av. Fonsny", 
-          housenbr_field: "20",
-          city_field: "Saint-Gilles",
-          postcode_field:  "1060",
-          country_field: "Belgium"})
-
-
-# In[17]:
-
-
-
+call_ws({street_field:   "Av. Fonsny", 
+         housenbr_field: "20",
+         city_field:     "Saint-Gilles",
+         postcode_field: "1060",
+         country_field:  "Belgium"})
 
 
 # ## Batch calls (row by row)
 
-# In[31]:
+# In[15]:
 
 
 addresses = get_addresses("address.csv.gz")
-addresses = addresses.sample(10).copy()
+addresses = addresses.sample(100).copy()
 
 
 # ### Simple way
 
-# In[29]:
+# In[5]:
 
 
 addresses["json"] = addresses.progress_apply(call_ws, axis=1)
@@ -187,31 +186,25 @@ expand_json(addresses)
 
 # ### Single block
 
-# In[15]:
+# In[52]:
 
 
 # Only geocoding
-call_ws_batch(addresses)
+call_ws_batch(addresses, with_reject=True)
 
 
-# In[27]:
+# In[48]:
 
 
 # Geocode + address
-res = call_ws_batch(addresses, mode="long") 
-res
+call_ws_batch(addresses, mode="lng") 
 
 
-# In[29]:
+# In[34]:
 
 
-res.method.value_counts()
-
-
-# In[28]:
-
-
-addresses[~addresses.EntityNumber.isin(res.addr_key)]
+# Geocode + address, with rejected addresses
+call_ws_batch(addresses, mode="long,reject") 
 
 
 # ### Batch blocs
@@ -242,12 +235,6 @@ df_res
 
 
 df_res.method.value_counts()
-
-
-# In[ ]:
-
-
-
 
 
 # In[ ]:

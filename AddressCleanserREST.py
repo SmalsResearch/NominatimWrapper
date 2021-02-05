@@ -108,7 +108,7 @@ def get_row_dict(row, orig=False):
     if orig: 
         return row["osm_item_result"]
     else: 
-        to_copy_field = ["osm_id", "place_id", "lat","lon","display_name", "place_rank", "method", "extra_house_nbr", "reject_reason"] + list(collapse_params.keys())  + list(filter(lambda x: x.startswith("SIM"), row.index))
+        to_copy_field = ["osm_id", "place_id", "lat","lon","display_name", "place_rank", "method", "extra_house_nbr", "reject_reason", "osm_addr_in"] + list(collapse_params.keys())  + list(filter(lambda x: x.startswith("SIM"), row.index))
         res =  {}
 
         for f in to_copy_field:
@@ -276,7 +276,7 @@ def remove_empty_values(dct_lst):
     return [{k: v for k, v in item.items() if not pd.isnull(v) and v != ""} for item in dct_lst]
 
 
-# In[14]:
+# In[1]:
 
 
 # Call to this : curl -F media=@address_sample100.csv http://127.0.0.1:5000/batch/ -X POST -F mode=long
@@ -285,14 +285,21 @@ def remove_empty_values(dct_lst):
 def batch():
     log("batch")
     
+   
     mode = "short"
     if "mode" in request.form :
         mode = request.form["mode"]
+        if not mode in ["geo", "short", "long"]:
+            return f'[{{"error": "Invalid mode {mode}"}}]'
+        
+    with_reject = False
+    if "with_rejected" in request.form:
+        if request.form["with_rejected"] == "yes":
+            with_reject = True
+        elif request.form["with_rejected"] != "no":
+            return f'[{{"error": "Invalid with_rejected {request.form["with_rejected"]}"}}]'
+#           return ({"error": f"Invalid with_rejected value : {request.form['with_rejected']}"})
     
-    with_reject = mode.endswith(",reject")
-    
-    mode = mode.replace(",reject", "")
-
     key_name = (list(request.files.keys())[0])
     
     #print(request.files[0])
@@ -325,9 +332,7 @@ def batch():
         elif mode == "long":
             res = df.merge(res)
             
-        else:
-            return {"error": f"Invalid mode {mode}"}
-        
+       
         if with_reject:
             rejected_rec = rejected_addresses.groupby(addr_key_field).apply(lambda rec: remove_empty_values(rec.to_dict(orient="records")) ).rename("rejected").reset_index()
             res = res.merge(rejected_rec, how="outer")
