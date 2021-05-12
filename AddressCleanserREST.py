@@ -140,7 +140,7 @@ transformers_sequence = [ ["orig"],
                           ["nostreet"]
                         ]
 
-def process_address(data):
+def process_address(data, check_osm_results=True):
     vlog(f"Will process {data}")
     to_process_addresses = get_init_df(data)
     
@@ -155,7 +155,8 @@ def process_address(data):
             osm_results, rejected, step_stats = transform_and_process(to_process_addresses, transformers, addr_key_field, 
                                                                       street_field=street_field, housenbr_field=housenbr_field, 
                                                                       postcode_field=postcode_field, city_field=city_field,
-                                                                      country_field=country_field)
+                                                                      country_field=country_field,
+                                                                      check_osm_results=check_osm_results)
             
         except Exception as e: 
             log(f"Error during processing : {e}")
@@ -176,7 +177,7 @@ def process_address(data):
 # In[12]:
 
 
-def process_addresses(to_process_addresses):
+def process_addresses(to_process_addresses,check_osm_results=True):
     
     all_reject = pd.DataFrame()
     osm_addresses        = pd.DataFrame()
@@ -193,7 +194,8 @@ def process_addresses(to_process_addresses):
             osm_results, rejected, step_stats = transform_and_process(chunk, transformers, addr_key_field, 
                                                                       street_field=street_field, housenbr_field=housenbr_field, 
                                                                       postcode_field=postcode_field, city_field=city_field,
-                                                                      country_field=country_field)
+                                                                      country_field=country_field,
+                                                                      check_osm_results=check_osm_results)
             
             osm_addresses =      osm_addresses.append(osm_results, sort=False).drop_duplicates()
             rejected_addresses = rejected_addresses.append(rejected, sort=False).drop_duplicates()
@@ -244,19 +246,28 @@ def search():
     for k in AddressCleanserUtils.timestats:
         AddressCleanserUtils.timestats[k]=timedelta(0)
         
-    data= {street_field   : get_arg("street", ""),
+    data= {street_field   : get_arg("street",      ""),
            housenbr_field : get_arg("housenumber", ""),
-           city_field     : get_arg("city", ""),
-           postcode_field : get_arg("postcode", ""),
-           country_field  : get_arg("country", ""),
+           city_field     : get_arg("city",        ""),
+           postcode_field : get_arg("postcode",    ""),
+           country_field  : get_arg("country",     ""),
 
           }
-    no_reject = get_arg("noreject", False)
-   
-    res = process_address(data)
+    no_reject = get_arg("no_reject", False)
+    
+    if get_arg("check_result", "no") == "no":
+        check_osm_results = False
+        log("Won't check OSM results")
+    else:
+        check_osm_results = True
+        log("Will check OSM results")
+    
+    
+    res = process_address(data, check_osm_results)
     log(f"Input: {data}")
     log(f"Result: {res}")
-    
+    log(f"no_reject: {no_reject}")
+   
     if with_timing_info: 
         res["timing"] = {k: AddressCleanserUtils.timestats[k].total_seconds() for k in AddressCleanserUtils.timestats}
     
@@ -299,20 +310,28 @@ def batch():
         elif request.form["with_rejected"] != "no":
             return f'[{{"error": "Invalid with_rejected {request.form["with_rejected"]}"}}]'
 #           return ({"error": f"Invalid with_rejected value : {request.form['with_rejected']}"})
-    
+
+    if get_arg("check_result", "no") == "no":
+        check_osm_results = False
+        log("Won't check OSM results")
+    else:
+        check_osm_results = True
+        log("Will check OSM results")
+
+        
     key_name = (list(request.files.keys())[0])
     
     #print(request.files[0])
     
     df = pd.read_csv(request.files[key_name], dtype=str)
     log("Input: \n" + df.to_string(max_rows=10))
-    
+    log
     mandatory_fields = [street_field, housenbr_field , postcode_field , city_field, country_field, addr_key_field]
     for field in mandatory_fields:
         if field not in df: 
             return f"Field '{field} mandatory in file. All mandatory fields are {mandatory_fields}\n"
     
-    res, rejected_addresses = process_addresses(df)
+    res, rejected_addresses = process_addresses(df, check_osm_results)
     
     
     if type(res) == dict :

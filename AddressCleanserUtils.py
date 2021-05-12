@@ -430,7 +430,9 @@ def ignore_mismatch_keep_bests(addr_matches, addr_key_field,
 # In[19]:
 
 
-def retry_with_low_place_rank(osm_results, sent_addresses, street_field, housenbr_field,  postcode_field, city_field, country_field):
+def retry_with_low_place_rank(osm_results, sent_addresses, 
+                              street_field, housenbr_field,  postcode_field, city_field, country_field,
+                              check_osm_results=True):
     vlog("Trying to improve place_rank with place_rank < 30 by cleansed house number ")
     sent_addresses_26 = osm_results[osm_results.place_rank < 30].merge(sent_addresses)#[osm_addresses.place_rank == 26]
     
@@ -447,7 +449,8 @@ def retry_with_low_place_rank(osm_results, sent_addresses, street_field, housenb
                                               osm_addr_field="osm_addr_in", addr_key_field=addr_key_field, 
                                               street_field=street_field,housenbr_field="housenbr_clean",  
                                               postcode_field=postcode_field, city_field=city_field,
-                                              country_field=country_field)
+                                              country_field=country_field,
+                                              check_osm_results=check_osm_results)
     
     if osm_results_26.shape[0]>0:
         vlog("     - New results with place_rank == 30 after cleansing ({}):".format(" ; ".join([f"rank {r}: {c}" for r, c in osm_results_26.place_rank.value_counts().iteritems()])))
@@ -487,7 +490,7 @@ def add_extra_house_number(osm_addresses, addresses, street_field, housenbr_fiel
 
 
 def transform_and_process(to_process_addresses, transformers, addr_key_field, street_field, housenbr_field, 
-                          city_field, postcode_field, country_field):
+                          city_field, postcode_field, country_field, check_osm_results=True):
 
     t = datetime.now()
     method = "+".join(transformers)
@@ -532,14 +535,16 @@ def transform_and_process(to_process_addresses, transformers, addr_key_field, st
                                         osm_addr_field="osm_addr_in", addr_key_field=addr_key_field, 
                                         street_field=street_field, housenbr_field=housenbr_field, 
                                         postcode_field=postcode_field, city_field=city_field,
-                                        country_field=country_field)
+                                        country_field=country_field,
+                                        check_osm_results=check_osm_results)
     
     if with_cleansed_number_on_26 and osm_results.shape[0]>0 : 
 
         osm_results = retry_with_low_place_rank(osm_results, sent_addresses, 
                                                 street_field=street_field,housenbr_field=housenbr_field,  
                                                 postcode_field=postcode_field, city_field=city_field,
-                                                country_field=country_field)
+                                                country_field=country_field,
+                                                check_osm_results=check_osm_results)
 
     osm_results["method"] = method
     rejected["method"] = method
@@ -614,7 +619,8 @@ def get_osm_details(place_id): #lg = "en,fr,nl"
 
 
 def process_osm(df, osm_addr_field, addr_key_field, street_field, housenbr_field, 
-                postcode_field, city_field, country_field, accept_language="", similarity_threshold=similarity_threshold) :
+                postcode_field, city_field, country_field, accept_language="", similarity_threshold=similarity_threshold, 
+               check_osm_results=True) :
     
     t = datetime.now()
     
@@ -743,7 +749,10 @@ def process_osm(df, osm_addr_field, addr_key_field, street_field, housenbr_field
       
         
     vlog("     - Done!")
-    return osm_results[[osm_addr_field, addr_key_field, "place_id", "lat", "lon", "display_name", "namedetails", "place_rank", "category", "type", "SIM_street_which", "SIM_street", "SIM_city", "SIM_zip", "SIM_house_nbr"] + list(collapse_params.keys()) + ["addr_out_other"] ], osm_reject
+    
+    res_columns = [osm_addr_field, addr_key_field, "place_id", "lat", "lon", "display_name", "namedetails", "place_rank", "category", "type", "SIM_street_which", "SIM_street", "SIM_city", "SIM_zip", "SIM_house_nbr"] + list(collapse_params.keys()) + ["addr_out_other"] 
+    res_columns = [c for c in res_columns if c in osm_results ]
+    return osm_results[res_columns], osm_reject
     
 
 
@@ -1105,7 +1114,7 @@ if with_rest_libpostal:
         try: 
             res = requests.post(url, json = params)
         except Exception as e:
-             raise Exception (f"Cannot connect to Libpostal ({photon_host}): {e}")
+             raise Exception (f"Cannot connect to Libpostal ({libpostal_host}): {e}")
     
         res = json.loads(res.content.decode())
 

@@ -1,5 +1,5 @@
 with_dask = True
-check_osm_results = True
+#check_osm_results = True
 
 check_with_transformed = True 
 # If True (and check_osm_results = True): osm result is compared to output of transformer

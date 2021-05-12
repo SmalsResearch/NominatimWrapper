@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[6]:
+# In[1]:
 
 
 import pandas as pd
@@ -28,19 +28,19 @@ import matplotlib.pyplot as plt
 from IPython.display import display
 
 
-# In[7]:
+# In[2]:
 
 
 import urllib3
 
 
-# In[8]:
+# In[3]:
 
 
 http = urllib3.PoolManager()
 
 
-# In[9]:
+# In[4]:
 
 
 from config_batch import * 
@@ -48,17 +48,17 @@ from config_batch import *
 
 # # Functions
 
-# In[10]:
+# In[5]:
 
 
 ws_hostname = "127.0.1.1"
 # ws_hostname = "192.168.1.3"
 
 
-# In[11]:
+# In[38]:
 
 
-def call_ws(addr_data): #lg = "en,fr,nl"
+def call_ws(addr_data, check_result=True): #lg = "en,fr,nl"
     t = datetime.now()
     
     params = urllib.parse.urlencode({"street": addr_data[street_field],
@@ -66,10 +66,11 @@ def call_ws(addr_data): #lg = "en,fr,nl"
                                      "city": addr_data[city_field],
                                      "postcode": addr_data[postcode_field],
                                      "country": addr_data[country_field],
+                                     "check_result" : "yes" if check_result else "no"
                                     })
     url = f"http://{ws_hostname}:5000/search/?{params}"
     
-    
+    print(url)
     try:
         with urllib.request.urlopen(url) as response:
             res = response.read()
@@ -82,10 +83,10 @@ def call_ws(addr_data): #lg = "en,fr,nl"
     
 
 
-# In[51]:
+# In[28]:
 
 
-def call_ws_batch(addr_data, mode="geo", with_reject=False): #lg = "en,fr,nl"
+def call_ws_batch(addr_data, mode="geo", with_reject=False, no_check=False): #lg = "en,fr,nl"
 #     print(addr_data)
 #     print(addr_data.shape)
 #     print()
@@ -95,7 +96,8 @@ def call_ws_batch(addr_data, mode="geo", with_reject=False): #lg = "en,fr,nl"
         postcode_field: "postcode",
         city_field: "city",
         country_field: "country",
-        addr_key_field : "addr_key"}).to_csv(index=False)
+        addr_key_field : "addr_key"
+    }).to_csv(index=False)
     
     r = http.request(
     'POST',
@@ -103,7 +105,8 @@ def call_ws_batch(addr_data, mode="geo", with_reject=False): #lg = "en,fr,nl"
     fields= { 
         'media': ('addresses.csv', file_data),
         'mode': mode,
-        "with_rejected" : "yes" if with_reject else "no"
+        "with_rejected" : "yes" if with_reject else "no",
+        "no_check": 1 if no_check else 0
     })
     
     try:
@@ -116,7 +119,7 @@ def call_ws_batch(addr_data, mode="geo", with_reject=False): #lg = "en,fr,nl"
     return res
 
 
-# In[13]:
+# In[8]:
 
 
 def expand_json(addresses):
@@ -136,19 +139,19 @@ def expand_json(addresses):
 
 # ## Single address calls
 
-# In[53]:
+# In[43]:
 
 
 call_ws({street_field:   "Av. Fonsny", 
          housenbr_field: "20",
          city_field:     "Saint-Gilles",
          postcode_field: "1060",
-         country_field:  "Belgium"})
+         country_field:  "Belgium"}, check_result=False)
 
 
 # ## Batch calls (row by row)
 
-# In[15]:
+# In[10]:
 
 
 addresses = get_addresses("address.csv.gz")
@@ -157,7 +160,7 @@ addresses = addresses.sample(100).copy()
 
 # ### Simple way
 
-# In[5]:
+# In[15]:
 
 
 addresses["json"] = addresses.progress_apply(call_ws, axis=1)
@@ -176,40 +179,46 @@ with ProgressBar():
     addresses["json"] = dask_task.compute()
 
 
-# In[30]:
+# In[26]:
 
 
 expand_json(addresses)
+
+
+# In[27]:
+
+
+addresses
 
 
 # ## Batch calls (batch WS)
 
 # ### Single block
 
-# In[52]:
+# In[20]:
 
 
 # Only geocoding
-call_ws_batch(addresses, with_reject=True)
+call_ws_batch(addresses, mode="geo")
 
 
-# In[48]:
+# In[62]:
 
 
 # Geocode + address
-call_ws_batch(addresses, mode="lng") 
+call_ws_batch(addresses, mode="short") 
 
 
-# In[34]:
+# In[63]:
 
 
 # Geocode + address, with rejected addresses
-call_ws_batch(addresses, mode="long,reject") 
+call_ws_batch(addresses, mode="long", with_reject=True) 
 
 
 # ### Batch blocs
 
-# In[29]:
+# In[22]:
 
 
 chunk_size = 10
@@ -224,17 +233,23 @@ res= [call_ws_batch(chunk, mode="long") for chunk in tqdm(chunks)]
 #1000 : 1:37
 
 
-# In[30]:
+# In[23]:
 
 
 df_res = pd.concat(res, sort=False)
 df_res
 
 
-# In[31]:
+# In[24]:
 
 
 df_res.method.value_counts()
+
+
+# In[25]:
+
+
+df_res
 
 
 # In[ ]:

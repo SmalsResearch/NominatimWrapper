@@ -321,7 +321,8 @@ def main_loop(chunk):
         osm_results, rejected, step_stats = transform_and_process(chunk, transformers, config_module.addr_key_field, 
                                                                   config_module.street_field, config_module.housenbr_field, 
                                                                   config_module.city_field, config_module.postcode_field,
-                                                                  config_module.country_field)
+                                                                  config_module.country_field, 
+                                                                 check_osm_results=check_osm_results)
 
         osm_addresses =      osm_addresses.append(osm_results, sort=False).drop_duplicates()
         rejected_addresses = rejected_addresses.append(rejected, sort=False).drop_duplicates()

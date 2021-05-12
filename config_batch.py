@@ -5,6 +5,9 @@ import numpy as np
 
 # path = "./"
 
+check_osm_results = True
+
+
 # addresses_filename  = path + "address.csv.gz" 
 
 street_field   = "StreetFR"
