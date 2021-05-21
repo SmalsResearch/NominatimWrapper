@@ -140,7 +140,7 @@ transformers_sequence = [ ["orig"],
                           ["nostreet"]
                         ]
 
-def process_address(data, check_osm_results=True):
+def process_address(data, check_osm_results=True, osm_structured=False):
     vlog(f"Will process {data}")
     to_process_addresses = get_init_df(data)
     
@@ -156,7 +156,8 @@ def process_address(data, check_osm_results=True):
                                                                       street_field=street_field, housenbr_field=housenbr_field, 
                                                                       postcode_field=postcode_field, city_field=city_field,
                                                                       country_field=country_field,
-                                                                      check_osm_results=check_osm_results)
+                                                                      check_osm_results=check_osm_results,
+                                                                      osm_structured=osm_structured)
             
         except Exception as e: 
             log(f"Error during processing : {e}")
@@ -177,7 +178,7 @@ def process_address(data, check_osm_results=True):
 # In[12]:
 
 
-def process_addresses(to_process_addresses,check_osm_results=True):
+def process_addresses(to_process_addresses, check_osm_results=True, osm_structured=False):
     
     all_reject = pd.DataFrame()
     osm_addresses        = pd.DataFrame()
@@ -195,7 +196,8 @@ def process_addresses(to_process_addresses,check_osm_results=True):
                                                                       street_field=street_field, housenbr_field=housenbr_field, 
                                                                       postcode_field=postcode_field, city_field=city_field,
                                                                       country_field=country_field,
-                                                                      check_osm_results=check_osm_results)
+                                                                      check_osm_results=check_osm_results,
+                                                                      osm_structured=osm_structured)
             
             osm_addresses =      osm_addresses.append(osm_results, sort=False).drop_duplicates()
             rejected_addresses = rejected_addresses.append(rejected, sort=False).drop_duplicates()
@@ -262,8 +264,14 @@ def search():
         check_osm_results = True
         log("Will check OSM results")
     
+    if get_arg("struct_osm", "no") == "no":
+        osm_structured = False
+        log("Will call unstructured OSM")
+    else:
+        osm_structured = True
+        log("Will call structured OSM")
     
-    res = process_address(data, check_osm_results)
+    res = process_address(data, check_osm_results, osm_structured)
     log(f"Input: {data}")
     log(f"Result: {res}")
     log(f"no_reject: {no_reject}")
@@ -307,6 +315,7 @@ def batch():
     if "with_rejected" in request.form:
         if request.form["with_rejected"] == "yes":
             with_reject = True
+            log("Will return rejects")
         elif request.form["with_rejected"] != "no":
             return f'[{{"error": "Invalid with_rejected {request.form["with_rejected"]}"}}]'
 #           return ({"error": f"Invalid with_rejected value : {request.form['with_rejected']}"})
@@ -317,6 +326,14 @@ def batch():
     else:
         check_osm_results = True
         log("Will check OSM results")
+        
+    if get_arg("struct_osm", "no") == "no":
+        osm_structured = False
+        log("Will call unstructured OSM")
+    else:
+        osm_structured = True
+        log("Will call structured OSM")
+
 
         
     key_name = (list(request.files.keys())[0])
@@ -325,13 +342,13 @@ def batch():
     
     df = pd.read_csv(request.files[key_name], dtype=str)
     log("Input: \n" + df.to_string(max_rows=10))
-    log
+    
     mandatory_fields = [street_field, housenbr_field , postcode_field , city_field, country_field, addr_key_field]
     for field in mandatory_fields:
         if field not in df: 
             return f"Field '{field} mandatory in file. All mandatory fields are {mandatory_fields}\n"
     
-    res, rejected_addresses = process_addresses(df, check_osm_results)
+    res, rejected_addresses = process_addresses(df, check_osm_results, osm_structured)
     
     
     if type(res) == dict :
@@ -346,7 +363,7 @@ def batch():
             res = res[[addr_key_field,"lat", "lon", "place_rank", "method"]]
         elif mode == "short":
             res = df.merge(res)[[addr_key_field,
-                       "lat", "lon", "place_rank", "method",
+                       "lat", "lon", "place_rank", "method", "place_id",
                        "addr_out_street", "addr_out_number", "extra_house_nbr", "addr_out_postcode", "addr_out_city",   "addr_out_country" ]]
         elif mode == "long":
             res = df.merge(res)

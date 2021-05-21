@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[2]:
+# In[12]:
 
 
 import pandas as pd
@@ -432,7 +432,7 @@ def ignore_mismatch_keep_bests(addr_matches, addr_key_field,
 
 def retry_with_low_place_rank(osm_results, sent_addresses, 
                               street_field, housenbr_field,  postcode_field, city_field, country_field,
-                              check_osm_results=True):
+                              check_osm_results=True, osm_structured=False):
     vlog("Trying to improve place_rank with place_rank < 30 by cleansed house number ")
     sent_addresses_26 = osm_results[osm_results.place_rank < 30].merge(sent_addresses)#[osm_addresses.place_rank == 26]
     
@@ -450,7 +450,8 @@ def retry_with_low_place_rank(osm_results, sent_addresses,
                                               street_field=street_field,housenbr_field="housenbr_clean",  
                                               postcode_field=postcode_field, city_field=city_field,
                                               country_field=country_field,
-                                              check_osm_results=check_osm_results)
+                                              check_osm_results=check_osm_results,
+                                              osm_structured=osm_structured)
     
     if osm_results_26.shape[0]>0:
         vlog("     - New results with place_rank == 30 after cleansing ({}):".format(" ; ".join([f"rank {r}: {c}" for r, c in osm_results_26.place_rank.value_counts().iteritems()])))
@@ -490,7 +491,7 @@ def add_extra_house_number(osm_addresses, addresses, street_field, housenbr_fiel
 
 
 def transform_and_process(to_process_addresses, transformers, addr_key_field, street_field, housenbr_field, 
-                          city_field, postcode_field, country_field, check_osm_results=True):
+                          city_field, postcode_field, country_field, check_osm_results=True, osm_structured=False):
 
     t = datetime.now()
     method = "+".join(transformers)
@@ -536,7 +537,8 @@ def transform_and_process(to_process_addresses, transformers, addr_key_field, st
                                         street_field=street_field, housenbr_field=housenbr_field, 
                                         postcode_field=postcode_field, city_field=city_field,
                                         country_field=country_field,
-                                        check_osm_results=check_osm_results)
+                                        check_osm_results=check_osm_results,
+                                        osm_structured=osm_structured)
     
     if with_cleansed_number_on_26 and osm_results.shape[0]>0 : 
 
@@ -588,6 +590,47 @@ def get_osm(addr, accept_language = ""): #lg = "en,fr,nl"
         raise Exception (f"Cannot get OSM results ({osm_host}): {e}") 
 
 
+# In[7]:
+
+
+def get_osm_struct(street, housenumber, postcode, city, country, accept_language = ""): #lg = "en,fr,nl"
+    params = urllib.parse.urlencode({"street": f"{street}, {housenumber}",
+                                     "city":city,
+                                     "postalcode": postcode,
+                                     "country": country,
+                                    "format":"jsonv2",
+                                    "accept-language":accept_language,
+                                    "addressdetails":"1",
+                                    "namedetails" : "1",
+                                    "limit": "50"
+                                    })
+    
+    url = "http://%s/search.php?%s"%(osm_host, params)
+#     print(url)
+    try: 
+        with urllib.request.urlopen(url) as response:
+            res = response.read()
+            res = json.loads(res)
+    #         return res
+            return [ {field: item[field] for field in ["place_id", "lat", "lon", "display_name", "address", "namedetails", "place_rank", "category", "type"]} for item in res] 
+    except Exception as e:
+        raise Exception (f"Cannot get OSM results ({osm_host}): {e}") 
+
+
+# In[20]:
+
+
+# osm_host="10.0.2.15:8080"
+# get_osm_struct("avenue fonsny", "20", "1060", "bruxelles", "Belgique" )
+
+
+# In[21]:
+
+
+# osm_host="10.0.2.15:7070"
+# get_osm_struct("avenue fonsny", "20", "1060", "bruxelles", "Belgique" )
+
+
 # In[23]:
 
 
@@ -615,12 +658,12 @@ def get_osm_details(place_id): #lg = "en,fr,nl"
 
 
 
-# In[24]:
+# In[16]:
 
 
 def process_osm(df, osm_addr_field, addr_key_field, street_field, housenbr_field, 
                 postcode_field, city_field, country_field, accept_language="", similarity_threshold=similarity_threshold, 
-               check_osm_results=True) :
+               check_osm_results=True, osm_structured=False) :
     
     t = datetime.now()
     
@@ -628,7 +671,11 @@ def process_osm(df, osm_addr_field, addr_key_field, street_field, housenbr_field
         
         return pd.DataFrame(columns=[osm_addr_field, addr_key_field]), pd.DataFrame(columns=[osm_addr_field, addr_key_field, "reject_reason"])
     
-    to_process = df[[osm_addr_field]].drop_duplicates()
+    if osm_structured:
+        to_process = df[[osm_addr_field, addr_key_field, street_field, housenbr_field, 
+                postcode_field, city_field, country_field]].drop_duplicates()
+    else:
+        to_process = df[[osm_addr_field]].drop_duplicates()
     
     vlog(f"OSM: Will process {df.shape[0]} with {to_process.shape[0]} unique values")
     
@@ -648,7 +695,16 @@ def process_osm(df, osm_addr_field, addr_key_field, street_field, housenbr_field
 
 #         to_process[osm_res_field] = dask_task.compute() #dchunk.loc[:].apply(map_partitions(lambda r: get_osm(r[addr_field])).compute()#get=get)
 #     else: 
-    to_process[osm_res_field] = to_process[[osm_addr_field, "accept_language"]].apply(lambda row: get_osm(row[osm_addr_field], row["accept_language"]), axis=1)
+    if osm_structured:
+        to_process[osm_res_field] = to_process.apply(lambda row: 
+                                                   get_osm_struct(street =    row[street_field],
+                                                                  housenumber=row[housenbr_field],
+                                                                  postcode=   row[postcode_field],
+                                                                  city=       row[city_field],
+                                                                  country=    row[country_field], 
+                                                                  accept_language = row["accept_language"]), axis=1)
+    else: 
+        to_process[osm_res_field] = to_process[[osm_addr_field, "accept_language"]].apply(lambda row: get_osm(row[osm_addr_field], row["accept_language"]), axis=1)
         
     timestats["osm"] += datetime.now() - t
     

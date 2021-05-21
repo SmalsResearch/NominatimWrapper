@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
+# In[2]:
 
 
 import pandas as pd
@@ -15,7 +15,7 @@ from tqdm.autonotebook import  tqdm
 
 #%matplotlib inline
 
-tqdm.pandas(tqdm)
+tqdm.pandas()#tqdm)
 
 
 # import jellyfish
@@ -46,13 +46,13 @@ logging.getLogger("urllib3").setLevel(logging.WARNING)
 
 
 
-# In[2]:
+# In[3]:
 
 
 starting_time = datetime.now()
 
 
-# In[3]:
+# In[4]:
 
 
 config_file = "config_batch"
@@ -84,7 +84,7 @@ for opt, arg in opts:
         
 
 
-# In[4]:
+# In[24]:
 
 
 if AddressCleanserUtils.within_jupyter :
@@ -95,14 +95,14 @@ if AddressCleanserUtils.within_jupyter :
     address_file = "./address.csv.gz"
 
     sample_size = 10000
-    AddressCleanserUtils.photon_host = "172.26.0.1:2322"
-    AddressCleanserUtils.libpostal_host = "172.26.0.1:8080"
+    AddressCleanserUtils.photon_host = "127.0.0.1:2322"
+    AddressCleanserUtils.libpostal_host = "172.18.0.3:6060"
 
 # with_dask=False
 # %matplotlib inline
 
 
-# In[5]:
+# In[6]:
 
 
 import importlib
@@ -110,7 +110,7 @@ log(f"Loading config file {config_file}")
 config_module = importlib.import_module(config_file)
 
 
-# In[6]:
+# In[7]:
 
 
 # Check that some required variables are present in the configuration file
@@ -128,7 +128,7 @@ for var_name in field_names  + other_var_names:
 
 
 
-# In[7]:
+# In[8]:
 
 
 AddressCleanserUtils.street_field    = config_module.street_field
@@ -145,13 +145,13 @@ AddressCleanserUtils.use_osm_parent      = use_osm_parent
 AddressCleanserUtils.with_rest_libpostal = with_rest_libpostal
 
 
-# In[8]:
+# In[9]:
 
 
 AddressCleanserUtils.pbar.register()
 
 
-# In[9]:
+# In[10]:
 
 
 # Check that Nominatim server is running properly
@@ -168,7 +168,7 @@ except Exception as e:
     raise e
 
 
-# In[10]:
+# In[15]:
 
 
 # In old version of Nominatim, page "details.php" could NOT return a JSON result, allowing to get place details from a place id
@@ -187,13 +187,7 @@ if AddressCleanserUtils.use_osm_parent:
         raise e
 
 
-# In[ ]:
-
-
-
-
-
-# In[11]:
+# In[18]:
 
 
 # Check that Photon server is running properly
@@ -209,13 +203,7 @@ except Exception as e:
     raise e
 
 
-# In[ ]:
-
-
-
-
-
-# In[12]:
+# In[25]:
 
 
 # Check that Libpostal is running properly
@@ -231,7 +219,7 @@ except Exception as e:
 
 # # Data preparation
 
-# In[13]:
+# In[ ]:
 
 
 # Get the addresses dataframe. Config module has to contain a "get_addresses(filename)" function, returning a dataframe, with 

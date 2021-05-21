@@ -6,6 +6,7 @@ check_with_transformed = True
 # If False, osm result is compared to data input.
 # True allows to accept more results (but also more false positive)
 
+osm_structured = False
 
 with_rest_libpostal = True
 

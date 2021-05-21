@@ -55,10 +55,10 @@ ws_hostname = "127.0.1.1"
 # ws_hostname = "192.168.1.3"
 
 
-# In[38]:
+# In[6]:
 
 
-def call_ws(addr_data, check_result=True): #lg = "en,fr,nl"
+def call_ws(addr_data, check_result=True, structured_osm=False): #lg = "en,fr,nl"
     t = datetime.now()
     
     params = urllib.parse.urlencode({"street": addr_data[street_field],
@@ -66,11 +66,11 @@ def call_ws(addr_data, check_result=True): #lg = "en,fr,nl"
                                      "city": addr_data[city_field],
                                      "postcode": addr_data[postcode_field],
                                      "country": addr_data[country_field],
-                                     "check_result" : "yes" if check_result else "no"
+                                     "check_result" : "yes" if check_result else "no",
+                                     "struct_osm" : "yes" if structured_osm else "no"
                                     })
     url = f"http://{ws_hostname}:5000/search/?{params}"
     
-    print(url)
     try:
         with urllib.request.urlopen(url) as response:
             res = response.read()
@@ -83,10 +83,10 @@ def call_ws(addr_data, check_result=True): #lg = "en,fr,nl"
     
 
 
-# In[28]:
+# In[7]:
 
 
-def call_ws_batch(addr_data, mode="geo", with_reject=False, no_check=False): #lg = "en,fr,nl"
+def call_ws_batch(addr_data, mode="geo", with_reject=False, check_result=True, structured_osm=False): #lg = "en,fr,nl"
 #     print(addr_data)
 #     print(addr_data.shape)
 #     print()
@@ -106,7 +106,8 @@ def call_ws_batch(addr_data, mode="geo", with_reject=False, no_check=False): #lg
         'media': ('addresses.csv', file_data),
         'mode': mode,
         "with_rejected" : "yes" if with_reject else "no",
-        "no_check": 1 if no_check else 0
+        "check_result" : "yes" if check_result else "no",
+        "struct_osm" : "yes" if structured_osm else "no"
     })
     
     try:
@@ -139,31 +140,31 @@ def expand_json(addresses):
 
 # ## Single address calls
 
-# In[43]:
+# In[11]:
 
 
 call_ws({street_field:   "Av. Fonsny", 
          housenbr_field: "20",
          city_field:     "Saint-Gilles",
          postcode_field: "1060",
-         country_field:  "Belgium"}, check_result=False)
+         country_field:  "Belgium"}, check_result=False, structured_osm=False)
 
 
 # ## Batch calls (row by row)
 
-# In[10]:
+# In[15]:
 
 
 addresses = get_addresses("address.csv.gz")
-addresses = addresses.sample(100).copy()
+addresses = addresses.sample(1000).copy()
 
 
 # ### Simple way
 
-# In[15]:
+# In[74]:
 
 
-addresses["json"] = addresses.progress_apply(call_ws, axis=1)
+addresses["json"] = addresses.progress_apply(call_ws, check_result=True, structured_osm=False, axis=1)
 
 
 # ### Using Dask
@@ -195,11 +196,11 @@ addresses
 
 # ### Single block
 
-# In[20]:
+# In[53]:
 
 
 # Only geocoding
-call_ws_batch(addresses, mode="geo")
+call_ws_batch(addresses, mode="geo", check_result=True)
 
 
 # In[62]:
@@ -246,14 +247,77 @@ df_res
 df_res.method.value_counts()
 
 
+# In[75]:
+
+
+# df_res
+
+
+# ## Comparing options
+
+# In[24]:
+
+
+def call_ws_batch_chunks(addr_data, mode="geo", with_reject=False, check_result=True, structured_osm=False, chunk_size=50): 
+    chunks = np.array_split(addr_data, addr_data.shape[0]//chunk_size)
+
+    res= [call_ws_batch(chunk, mode=mode, 
+                        check_result=check_result, 
+                        structured_osm=structured_osm) for chunk in tqdm(chunks)]
+    df_res = pd.concat(res, sort=False)
+    return df_res
+
+
+# In[13]:
+
+
+results = {}
+
+
 # In[25]:
 
 
-df_res
+results[("check", "struct")] = call_ws_batch_chunks(addresses, mode="short", check_result=True, structured_osm=True)
 
 
-# In[ ]:
+# In[26]:
 
 
+results[("check", "unstruct")] = call_ws_batch_chunks(addresses, mode="short", check_result=True, structured_osm=False)
 
+
+# In[27]:
+
+
+results[("nocheck", "struct")] = call_ws_batch_chunks(addresses, mode="short", check_result=False, structured_osm=True)
+
+
+# In[29]:
+
+
+results[("nocheck", "unstruct")] = call_ws_batch_chunks(addresses, mode="short", check_result=False, structured_osm=False)
+
+
+# In[30]:
+
+
+for i in ["check","nocheck"]:
+    for j in ["struct", "unstruct"]:
+        print(i, j, results[(i,j)].shape)
+
+
+# In[44]:
+
+
+mg = results[("nocheck", "unstruct")].merge(results[("check", "unstruct")], how="outer", indicator=True, 
+                                            on=["addr_key", "lat", "lon", "place_rank", 
+                                                "addr_out_street", "addr_out_number", "extra_house_nbr", 
+                                                "addr_out_postcode", "addr_out_city", "addr_out_country"])
+mg
+
+
+# In[45]:
+
+
+mg[mg.addr_key.duplicated(keep=False)].sort_values("addr_key").iloc[0:60]
 
