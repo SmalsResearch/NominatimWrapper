@@ -257,7 +257,7 @@ def search():
           }
     no_reject = get_arg("no_reject", False)
     
-    if get_arg("check_result", "no") == "no":
+    if get_arg("check_result", "yes") == "no":
         check_osm_results = False
         log("Won't check OSM results")
     else:
@@ -320,7 +320,7 @@ def batch():
             return f'[{{"error": "Invalid with_rejected {request.form["with_rejected"]}"}}]'
 #           return ({"error": f"Invalid with_rejected value : {request.form['with_rejected']}"})
 
-    if get_arg("check_result", "no") == "no":
+    if get_arg("check_result", "yes") == "no":
         check_osm_results = False
         log("Won't check OSM results")
     else:

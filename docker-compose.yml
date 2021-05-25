@@ -14,7 +14,7 @@ services:
         context: .
         dockerfile: Docker/Dockerfile_libpostal
     ports:
-      - "8080:8080"
+            - "7070:8080"
     environment: 
       - NB_LPOST_WORKERS:1
 
@@ -29,6 +29,6 @@ services:
       - NB_WORKERS:4
       - PHOTON_HOST=photon:2322
       - LPOST_HOST=libpostal:8080
-      - OSM_HOST=172.18.0.1:7070 #172.17.0.2:8080 #172.17.0.2:8080  #10.1.0.45:7070
+      - OSM_HOST=10.1.0.45:8080 #172.17.0.2:8080 #172.17.0.2:8080  #10.1.0.45:7070
       - LOG_LEVEL=medium
       

@@ -52,6 +52,8 @@ from config_batch import *
 
 
 ws_hostname = "127.0.1.1"
+ws_hostname = "10.1.0.45"
+
 # ws_hostname = "192.168.1.3"
 
 
@@ -140,7 +142,7 @@ def expand_json(addresses):
 
 # ## Single address calls
 
-# In[11]:
+# In[9]:
 
 
 call_ws({street_field:   "Av. Fonsny", 
@@ -150,13 +152,23 @@ call_ws({street_field:   "Av. Fonsny",
          country_field:  "Belgium"}, check_result=False, structured_osm=False)
 
 
+# In[160]:
+
+
+call_ws({street_field:   "Avenue Louise", 
+         housenbr_field: "375",
+         city_field:     "Ixelles",
+         postcode_field: "1050",
+         country_field:  "Belgium"}, check_result=True, structured_osm=True)
+
+
 # ## Batch calls (row by row)
 
-# In[15]:
+# In[126]:
 
 
 addresses = get_addresses("address.csv.gz")
-addresses = addresses.sample(1000).copy()
+addresses = addresses.sample(100).copy()
 
 
 # ### Simple way
@@ -219,46 +231,12 @@ call_ws_batch(addresses, mode="long", with_reject=True)
 
 # ### Batch blocs
 
-# In[22]:
+# In[ ]:
 
 
-chunk_size = 10
-chunks = np.array_split(addresses, addresses.shape[0]//chunk_size)
+def call_ws_batch_chunks(addr_data, mode="geo", with_reject=False, check_result=True, structured_osm=False, chunk_size=100): 
+    ## TODO : find a better way with dask? It seems that map_partitions does not support function returning dataframes. 
 
-res= [call_ws_batch(chunk, mode="long") for chunk in tqdm(chunks)]
-
-## TODO : find a better way with dask? It seems that map_partitions does not support function returning dataframes. 
-#50: 4:04
-#100 : 2:30
-#250 : 2:04
-#1000 : 1:37
-
-
-# In[23]:
-
-
-df_res = pd.concat(res, sort=False)
-df_res
-
-
-# In[24]:
-
-
-df_res.method.value_counts()
-
-
-# In[75]:
-
-
-# df_res
-
-
-# ## Comparing options
-
-# In[24]:
-
-
-def call_ws_batch_chunks(addr_data, mode="geo", with_reject=False, check_result=True, structured_osm=False, chunk_size=50): 
     chunks = np.array_split(addr_data, addr_data.shape[0]//chunk_size)
 
     res= [call_ws_batch(chunk, mode=mode, 
@@ -268,56 +246,143 @@ def call_ws_batch_chunks(addr_data, mode="geo", with_reject=False, check_result=
     return df_res
 
 
-# In[13]:
+# In[ ]:
+
+
+df_res = call_ws_batch_chunks(addresses, chunk_size=10)
+df_res
+
+
+# In[24]:
+
+
+df_res.method.value_counts()
+
+
+# ## Comparing options
+
+# In[127]:
+
+
+addresses = get_addresses("address.csv.gz")
+# addresses = addresses[addresses[country_field] == "Belgique"]
+addresses = addresses.sample(10000).copy()
+
+
+# In[115]:
 
 
 results = {}
+it_per_seconds=pd.DataFrame()
+
+for check_label in ["check", "nocheck"]:
+    for struct_label in ["struct", "unstruct" ]:
+        print(check_label, struct_label)
+        start=datetime.now()
+        
+        results[(check_label, struct_label)] = call_ws_batch_chunks(addresses, 
+                                                                    mode="short", 
+                                                                    check_result   =  check_label == "check", 
+                                                                    structured_osm =  struct_label == "struct")
+        
+        it_per_seconds.loc[check_label, struct_label] = addresses.shape[0] / (datetime.now()-start).total_seconds()
+print("Iterations per seconds:")
+it_per_seconds
 
 
-# In[25]:
+# In[117]:
 
 
-results[("check", "struct")] = call_ws_batch_chunks(addresses, mode="short", check_result=True, structured_osm=True)
+print("Match rate")
+pd.DataFrame({k1: {k2: results[(k1,k2)].shape[0]/addresses.shape[0] for k2 in ["struct", "unstruct"]} 
+                  for k1 in  ["check","nocheck"]})
 
 
-# In[26]:
+# In[116]:
 
 
-results[("check", "unstruct")] = call_ws_batch_chunks(addresses, mode="short", check_result=True, structured_osm=False)
+print("Match rate (without nostreet)")
+pd.DataFrame({k1: {k2: results[(k1,k2)].query("method!='nostreet'").shape[0]/addresses.shape[0] for k2 in ["struct", "unstruct"]} 
+                  for k1 in  ["check","nocheck"]})
 
 
-# In[27]:
+# In[122]:
 
 
-results[("nocheck", "struct")] = call_ws_batch_chunks(addresses, mode="short", check_result=False, structured_osm=True)
+print("Unmatched addresses")
+for k1 in results:
+    print(k1)
+    nomatch=addresses[~addresses[addr_key_field].isin(results[k1]["addr_key"])]
+    display(nomatch)
+    print(nomatch[country_field].value_counts())
 
 
-# In[29]:
+# In[123]:
 
 
-results[("nocheck", "unstruct")] = call_ws_batch_chunks(addresses, mode="short", check_result=False, structured_osm=False)
+vc_values = pd.DataFrame(columns=results.keys(), index=results.keys())
+
+for k1 in results:
+    vc_values.loc[k1, k1] = results[k1].shape[0]
+    for k2 in results:
+        if k1>k2:
+            r1=results[k1]
+            r2=results[k2]
+            mg = r1[["addr_key", "place_id"]].merge(r2[["addr_key", "place_id"]], on="addr_key", how="outer", indicator=True)
+ 
+            vc = mg._merge.value_counts()
+
+            mismatches = mg[mg.place_id_x != mg.place_id_y][["addr_key"]]
+            mismatches = mismatches.merge(addresses.rename({addr_key_field:"addr_key"}, axis=1))
+            mismatches = mismatches.merge(r1[["addr_key", "addr_out_street", "addr_out_number", "extra_house_nbr", "addr_out_postcode", "addr_out_city"]], on="addr_key")
+            mismatches = mismatches.merge(r2[["addr_key", "addr_out_street", "addr_out_number", "extra_house_nbr", "addr_out_postcode", "addr_out_city"]], on="addr_key")
+            mismatches.columns = pd.MultiIndex.from_arrays([["Input"]*6 + [f"x:{k1}"]*5 + [f"y:{k2}"]*5, mismatches.columns])
+
+            mismatch_values = mismatches[(mismatches[f"x:{k1}"].rename(lambda x: x.replace("_x", ""), axis=1).fillna("") != 
+                                          mismatches[f"y:{k2}"].rename(lambda x: x.replace("_y", ""), axis=1).fillna("")).any(axis=1)]
+            
+            mismatch_values_no_nmbr = mismatches[(mismatches[f"x:{k1}"].rename(lambda x: x.replace("_x", ""), axis=1).drop("addr_out_number", axis=1).fillna("") != 
+                                                  mismatches[f"y:{k2}"].rename(lambda x: x.replace("_y", ""), axis=1).drop("addr_out_number", axis=1).fillna("")).any(axis=1)]
+            
+            
+            vc_label = f"{vc['both']} ({mismatches.shape[0]} - {mismatch_values.shape[0]} - {mismatch_values_no_nmbr.shape[0]}) / {vc['left_only']} / {vc['right_only']}"
+            vc_values.loc[k1, k2]=vc_label
+
+                
+            print(f"{k1} vs {k2}")
+            print(vc_label)
+            print("-----------------------------")
+            
+            print(f"Only in {k1}")
+            display(r1[r1.addr_key.isin(mg[mg._merge=="left_only"].addr_key)].merge(addresses.rename({addr_key_field:"addr_key"}, axis=1)))
+            
+            print(f"Only in {k2}")
+            display(r2[r2.addr_key.isin(mg[mg._merge=="right_only"].addr_key)].merge(addresses.rename({addr_key_field:"addr_key"}, axis=1)))
+            
+            print("Mismatch on place_id")
+            display(mismatches)
+            
+            print("Mismatch on values")
+            
+            display(mismatch_values)
+            
+            print("Mismatch on values (no nbr)")
+            display(mismatch_values_no_nmbr)
+            
+            print("#######################")
+            
+# display(vc_values.fillna(""))
 
 
-# In[30]:
+# In[124]:
 
 
-for i in ["check","nocheck"]:
-    for j in ["struct", "unstruct"]:
-        print(i, j, results[(i,j)].shape)
+print("Common in both (disagree on place_id - disagree on values - disagree on values, ignoring number) / results only for row / results only for columns")
+vc_values.fillna("")
 
 
-# In[44]:
+# In[ ]:
 
 
-mg = results[("nocheck", "unstruct")].merge(results[("check", "unstruct")], how="outer", indicator=True, 
-                                            on=["addr_key", "lat", "lon", "place_rank", 
-                                                "addr_out_street", "addr_out_number", "extra_house_nbr", 
-                                                "addr_out_postcode", "addr_out_city", "addr_out_country"])
-mg
 
-
-# In[45]:
-
-
-mg[mg.addr_key.duplicated(keep=False)].sort_values("addr_key").iloc[0:60]
 
