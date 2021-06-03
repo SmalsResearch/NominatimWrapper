@@ -125,10 +125,10 @@ def format_res(res):
     return list(res.fillna("").apply(lambda row: get_row_dict(row, False), axis=1))
 
 
-# In[10]:
+# In[ ]:
 
 
-transformers_sequence = [ ["orig"],
+default_transformers_sequence = [ ["orig"],
                           ["regex[init]"],
                           ["nonum"],
                           ["libpostal", "regex[lpost]"], 
@@ -139,6 +139,16 @@ transformers_sequence = [ ["orig"],
                           ["photon", "nonum"],
                           ["nostreet"]
                         ]
+
+
+transformers_sequence = os.getenv('TRANSFORMERS', default_transformers_sequence)
+vlog("Transformers:")
+vlog(transformers_sequence)
+
+
+# In[10]:
+
+
 
 def process_address(data, check_osm_results=True, osm_structured=False):
     vlog(f"Will process {data}")

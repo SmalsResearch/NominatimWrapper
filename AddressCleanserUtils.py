@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[12]:
+# In[7]:
 
 
 import pandas as pd
@@ -40,19 +40,19 @@ logger.setLevel(logging.INFO)
 from config import *
 
 
-# In[2]:
+# In[ ]:
 
 
 # !jupyter nbconvert --to python AddressCleanserUtils.ipynb
 
 
-# In[3]:
+# In[ ]:
 
 
 within_jupyter=False
 
 
-# In[4]:
+# In[ ]:
 
 
 
@@ -87,13 +87,13 @@ def vlog_display(df):
             vlog("\n"+str(df))
 
 
-# In[5]:
+# In[ ]:
 
 
 pbar = ProgressBar(dt=1.0)
 
 
-# In[6]:
+# In[ ]:
 
 
 # Mapping of nominatim results fields on our output fields
@@ -106,7 +106,7 @@ collapse_params = {
 }
 
 
-# In[7]:
+# In[ ]:
 
 
 osm_addr_field = "osm_addr" # name of the field of the address sent to Nominatim
@@ -114,7 +114,7 @@ osm_addr_field = "osm_addr" # name of the field of the address sent to Nominatim
 similarity_threshold = 0.5
 
 
-# In[8]:
+# In[ ]:
 
 
 timestats = {"transformer": timedelta(0),
@@ -129,7 +129,7 @@ timestats = {"transformer": timedelta(0),
 
 # ## Global
 
-# In[9]:
+# In[ ]:
 
 
 import unicodedata
@@ -141,7 +141,7 @@ def remove_accents(input_str):
     return u"".join([c for c in nfkd_form if not unicodedata.combining(c)])
 
 
-# In[10]:
+# In[ ]:
 
 
 def house_number_compare(n1, n2):
@@ -172,7 +172,7 @@ def house_number_compare(n1, n2):
     return res
 
 
-# In[11]:
+# In[ ]:
 
 
 def postcode_compare(s1, s2):
@@ -199,7 +199,7 @@ def postcode_compare(s1, s2):
     return sim
 
 
-# In[12]:
+# In[ ]:
 
 
 def levenshtein_similarity(str1, str2):
@@ -212,7 +212,7 @@ def levenshtein_similarity(str1, str2):
 
 
 
-# In[13]:
+# In[ ]:
 
 
 def inclusion_test(s1, s2):
@@ -232,7 +232,7 @@ def inclusion_test(s1, s2):
     return res
 
 
-# In[14]:
+# In[ ]:
 
 
 # s1="NEU"
@@ -243,7 +243,7 @@ def inclusion_test(s1, s2):
 # l_pref, l_suf
 
 
-# In[15]:
+# In[ ]:
 
 
 def fingerprint(column):
@@ -264,7 +264,7 @@ def fingerprint(column):
 
 
 
-# In[16]:
+# In[ ]:
 
 
 # TODO : replacement seulement si dans les 2 inputs en même temps  --> Pour éviter que "Avenue Louise" et "Place Louise" aient une similarité de 100%
@@ -351,7 +351,7 @@ def street_compare(street1, street2, compare_algo = levenshtein_similarity):
 
 
 
-# In[17]:
+# In[ ]:
 
 
 def city_compare(city1, city2, compare_algo = levenshtein_similarity):
@@ -367,7 +367,7 @@ def city_compare(city1, city2, compare_algo = levenshtein_similarity):
     return cities.fillna("").apply(lambda row : compare_algo(row.CITY1, row.CITY2), axis=1)
 
 
-# In[18]:
+# In[ ]:
 
 
 def ignore_mismatch_keep_bests(addr_matches, addr_key_field, 
@@ -427,7 +427,7 @@ def ignore_mismatch_keep_bests(addr_matches, addr_key_field,
     return result_head, rejected.append(result_tail)
 
 
-# In[19]:
+# In[ ]:
 
 
 def retry_with_low_place_rank(osm_results, sent_addresses, 
@@ -466,7 +466,7 @@ def retry_with_low_place_rank(osm_results, sent_addresses,
     return osm_results
 
 
-# In[20]:
+# In[ ]:
 
 
 def find_house_number(street, house_number):
@@ -487,7 +487,7 @@ def add_extra_house_number(osm_addresses, addresses, street_field, housenbr_fiel
     return result[np.concatenate([osm_addresses.keys(), ["extra_house_nbr"]])]
 
 
-# In[21]:
+# In[ ]:
 
 
 def transform_and_process(to_process_addresses, transformers, addr_key_field, street_field, housenbr_field, 
@@ -566,7 +566,7 @@ def transform_and_process(to_process_addresses, transformers, addr_key_field, st
 
 # ## OSM 
 
-# In[22]:
+# In[14]:
 
 
 def get_osm(addr, accept_language = ""): #lg = "en,fr,nl"
@@ -584,13 +584,13 @@ def get_osm(addr, accept_language = ""): #lg = "en,fr,nl"
         with urllib.request.urlopen(url) as response:
             res = response.read()
             res = json.loads(res)
-    #         return res
+#             return res
             return [ {field: item[field] for field in ["place_id", "lat", "lon", "display_name", "address", "namedetails", "place_rank", "category", "type"]} for item in res] 
     except Exception as e:
         raise Exception (f"Cannot get OSM results ({osm_host}): {e}") 
 
 
-# In[7]:
+# In[9]:
 
 
 def get_osm_struct(street, housenumber, postcode, city, country, accept_language = ""): #lg = "en,fr,nl"
@@ -611,17 +611,17 @@ def get_osm_struct(street, housenumber, postcode, city, country, accept_language
         with urllib.request.urlopen(url) as response:
             res = response.read()
             res = json.loads(res)
-    #         return res
+#             return res
             return [ {field: item[field] for field in ["place_id", "lat", "lon", "display_name", "address", "namedetails", "place_rank", "category", "type"]} for item in res] 
     except Exception as e:
         raise Exception (f"Cannot get OSM results ({osm_host}): {e}") 
 
 
-# In[20]:
+# In[24]:
 
 
-# osm_host="10.0.2.15:8080"
-# get_osm_struct("avenue fonsny", "20", "1060", "bruxelles", "Belgique" )
+# osm_host="10.1.0.45:8081"
+# get_osm_struct(city="Auderghem", street=None, housenumber=None, postcode="1160", country="Belgique")
 
 
 # In[21]:

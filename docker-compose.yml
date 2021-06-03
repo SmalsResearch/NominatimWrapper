@@ -29,6 +29,18 @@ services:
       - NB_WORKERS:4
       - PHOTON_HOST=photon:2322
       - LPOST_HOST=libpostal:8080
-      - OSM_HOST=10.1.0.45:8080 #172.17.0.2:8080 #172.17.0.2:8080  #10.1.0.45:7070
-      - LOG_LEVEL=medium
+      - OSM_HOST=10.1.0.45:8081 #172.17.0.2:8080 #172.17.0.2:8080  #10.1.0.45:7070
+      - LOG_LEVEL=high
+#       - TRANSFORMERS=[ ["orig"],
+#                           ["regex[init]"],
+#                           ["nonum"],
+#                           ["libpostal", "regex[lpost]"], 
+#                           ["libpostal", "regex[lpost]", "nonum"], 
+#                           ["libpostal", "regex[lpost]", "photon"], 
+#                           ["libpostal", "regex[lpost]", "photon", "nonum"], 
+#                           ["photon"],
+#                           ["photon", "nonum"],
+#                           ["libpostal", "nostreet"], 
+#                           ["nostreet"]
+#                         ]
       

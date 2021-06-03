@@ -142,17 +142,17 @@ def expand_json(addresses):
 
 # ## Single address calls
 
-# In[9]:
+# In[12]:
 
 
 call_ws({street_field:   "Av. Fonsny", 
          housenbr_field: "20",
          city_field:     "Saint-Gilles",
          postcode_field: "1060",
-         country_field:  "Belgium"}, check_result=False, structured_osm=False)
+         country_field:  "Belgium"}, check_result=True, structured_osm=False)
 
 
-# In[160]:
+# In[13]:
 
 
 call_ws({street_field:   "Avenue Louise", 
@@ -160,6 +160,26 @@ call_ws({street_field:   "Avenue Louise",
          city_field:     "Ixelles",
          postcode_field: "1050",
          country_field:  "Belgium"}, check_result=True, structured_osm=True)
+
+
+# In[17]:
+
+
+call_ws({street_field:   "Fechtergasse 16/13", 
+         housenbr_field: "",
+         city_field:     "Wenen",
+         postcode_field: "1090",
+         country_field:  "Oostenrijk"}, check_result=False, structured_osm=False)
+
+
+# In[22]:
+
+
+call_ws({street_field:   "Fechtergasse 16/13 1090 Wenen", 
+         housenbr_field: "",
+         city_field:     "",
+         postcode_field: "",
+         country_field:  "Oostenrijk"}, check_result=False, structured_osm=False)
 
 
 # ## Batch calls (row by row)
@@ -261,15 +281,15 @@ df_res.method.value_counts()
 
 # ## Comparing options
 
-# In[127]:
+# In[128]:
 
 
 addresses = get_addresses("address.csv.gz")
-# addresses = addresses[addresses[country_field] == "Belgique"]
+addresses = addresses[addresses[country_field] == "Belgique"]
 addresses = addresses.sample(10000).copy()
 
 
-# In[115]:
+# In[129]:
 
 
 results = {}
@@ -290,7 +310,7 @@ print("Iterations per seconds:")
 it_per_seconds
 
 
-# In[117]:
+# In[130]:
 
 
 print("Match rate")
@@ -298,7 +318,7 @@ pd.DataFrame({k1: {k2: results[(k1,k2)].shape[0]/addresses.shape[0] for k2 in ["
                   for k1 in  ["check","nocheck"]})
 
 
-# In[116]:
+# In[131]:
 
 
 print("Match rate (without nostreet)")
@@ -306,7 +326,7 @@ pd.DataFrame({k1: {k2: results[(k1,k2)].query("method!='nostreet'").shape[0]/add
                   for k1 in  ["check","nocheck"]})
 
 
-# In[122]:
+# In[132]:
 
 
 print("Unmatched addresses")
@@ -317,7 +337,7 @@ for k1 in results:
     print(nomatch[country_field].value_counts())
 
 
-# In[123]:
+# In[133]:
 
 
 vc_values = pd.DataFrame(columns=results.keys(), index=results.keys())
@@ -374,7 +394,7 @@ for k1 in results:
 # display(vc_values.fillna(""))
 
 
-# In[124]:
+# In[134]:
 
 
 print("Common in both (disagree on place_id - disagree on values - disagree on values, ignoring number) / results only for row / results only for columns")
