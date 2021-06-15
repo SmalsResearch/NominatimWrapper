@@ -432,7 +432,7 @@ def ignore_mismatch_keep_bests(addr_matches, addr_key_field,
 
 def retry_with_low_place_rank(osm_results, sent_addresses, 
                               street_field, housenbr_field,  postcode_field, city_field, country_field,
-                              check_osm_results=True, osm_structured=False):
+                              check_results=True, osm_structured=False):
     vlog("Trying to improve place_rank with place_rank < 30 by cleansed house number ")
     sent_addresses_26 = osm_results[osm_results.place_rank < 30].merge(sent_addresses)#[osm_addresses.place_rank == 26]
     
@@ -450,7 +450,7 @@ def retry_with_low_place_rank(osm_results, sent_addresses,
                                               street_field=street_field,housenbr_field="housenbr_clean",  
                                               postcode_field=postcode_field, city_field=city_field,
                                               country_field=country_field,
-                                              check_osm_results=check_osm_results,
+                                              check_results=check_results,
                                               osm_structured=osm_structured)
     
     if osm_results_26.shape[0]>0:
@@ -491,7 +491,7 @@ def add_extra_house_number(osm_addresses, addresses, street_field, housenbr_fiel
 
 
 def transform_and_process(to_process_addresses, transformers, addr_key_field, street_field, housenbr_field, 
-                          city_field, postcode_field, country_field, check_osm_results=True, osm_structured=False):
+                          city_field, postcode_field, country_field, check_results=True, osm_structured=False):
 
     t = datetime.now()
     method = "+".join(transformers)
@@ -508,7 +508,7 @@ def transform_and_process(to_process_addresses, transformers, addr_key_field, st
     transformed_addresses = apply_transformers(to_process_addresses, transformers, addr_key_field, 
                                                street_field=street_field, housenbr_field=housenbr_field, 
                                                postcode_field=postcode_field, city_field=city_field, country_field=country_field,
-                                               check_results=check_osm_results)
+                                               check_results=check_results)
     
 
     if transformed_addresses.shape[0]==0:
@@ -538,7 +538,7 @@ def transform_and_process(to_process_addresses, transformers, addr_key_field, st
                                         street_field=street_field, housenbr_field=housenbr_field, 
                                         postcode_field=postcode_field, city_field=city_field,
                                         country_field=country_field,
-                                        check_osm_results=check_osm_results,
+                                        check_results=check_results,
                                         osm_structured=osm_structured)
     
     if with_cleansed_number_on_26 and osm_results.shape[0]>0 : 
@@ -547,7 +547,7 @@ def transform_and_process(to_process_addresses, transformers, addr_key_field, st
                                                 street_field=street_field,housenbr_field=housenbr_field,  
                                                 postcode_field=postcode_field, city_field=city_field,
                                                 country_field=country_field,
-                                                check_osm_results=check_osm_results)
+                                                check_results=check_results)
 
     osm_results["method"] = method
     rejected["method"] = method
@@ -664,7 +664,7 @@ def get_osm_details(place_id): #lg = "en,fr,nl"
 
 def process_osm(df, osm_addr_field, addr_key_field, street_field, housenbr_field, 
                 postcode_field, city_field, country_field, accept_language="", similarity_threshold=similarity_threshold, 
-               check_osm_results=True, osm_structured=False) :
+               check_results=True, osm_structured=False) :
     
     t = datetime.now()
     
@@ -734,7 +734,7 @@ def process_osm(df, osm_addr_field, addr_key_field, street_field, housenbr_field
         
         return osm_results, pd.DataFrame(columns=[osm_addr_field, addr_key_field, "reject_reason"])
 
-    if check_osm_results:
+    if check_results:
         
         t = datetime.now()
     
@@ -930,7 +930,8 @@ def add_addr_out_columns(osm_results, prefix):
 # In[29]:
 
 
-def apply_transformers(addresses, transformers, addr_key_field, street_field, housenbr_field, postcode_field, city_field, country_field, check_results):
+def apply_transformers(addresses, transformers, addr_key_field, street_field, housenbr_field, postcode_field, 
+                       city_field, country_field, check_results):
     
     if transformers == ["orig"]:
         return addresses.copy()
@@ -961,11 +962,13 @@ def apply_transformers(addresses, transformers, addr_key_field, street_field, ho
             transformed_addresses[street_field] = ""
 
         elif transformer == "libpostal": 
-            transformed_addresses = libpostal_transformer(transformed_addresses, addr_key_field, street_field, housenbr_field, postcode_field, city_field, country_field, check_results)
+            transformed_addresses = libpostal_transformer(transformed_addresses, addr_key_field, street_field, housenbr_field, postcode_field, 
+                                                          city_field, country_field, check_results)
 #             display(transformed_addresses)
             
         elif transformer == "photon": 
-            transformed_addresses = photon_transformer(transformed_addresses, addr_key_field, street_field, housenbr_field, postcode_field, city_field, country_field, check_results)
+            transformed_addresses = photon_transformer(transformed_addresses, addr_key_field, street_field, housenbr_field, postcode_field, 
+                                                       city_field, country_field, check_results)
         else :
             assert False, f"Wrong transformer type : {transformer}"
 
@@ -1122,26 +1125,26 @@ def process_photon(df, addr_field, photon_col, addr_key_field):
 
 
 def photon_transformer(addresses, addr_key_field, street_field, housenbr_field, postcode_field, city_field, country_field,
-                       check_result, similarity_threshold=similarity_threshold):
+                       check_results, similarity_threshold=similarity_threshold):
     
     t = datetime.now() 
     photon_addr = addresses[[addr_key_field, street_field, housenbr_field, postcode_field, city_field, country_field]].copy()
     
     photon_addr["photon_full_addr"] = photon_addr[street_field].fillna("") +", "+                                 photon_addr[postcode_field].fillna("") + " " +photon_addr[city_field].fillna("")+", "+                                 photon_addr[country_field].fillna("") 
     
-    
     # Send to Photon
     photon_res = process_photon(photon_addr, "photon_full_addr", "photon", addr_key_field = addr_key_field)
 
-    if check_result:
-	    photon_res_sel = photon_keep_relevant_results(photon_res, photon_addr, addr_street_field=street_field, 
-                                                    addr_housenbr_field = housenbr_field,
-                                                    addr_postcode_field = postcode_field,  addr_city_field = city_field,
-                                                    addr_country_field  = country_field,
-                                                    addr_key_field = addr_key_field,  similarity_threshold=similarity_threshold)
+    if check_results:
+
+        photon_res_sel = photon_keep_relevant_results(photon_res, photon_addr, addr_street_field=street_field, 
+                                                        addr_housenbr_field = housenbr_field,
+                                                        addr_postcode_field = postcode_field,  addr_city_field = city_field,
+                                                        addr_country_field  = country_field,
+                                                        addr_key_field = addr_key_field,  similarity_threshold=similarity_threshold)
     else:
          photon_res_sel = photon_res
-
+            
     if photon_res_sel.shape[0] == 0:
         return photon_res_sel
     
@@ -1199,7 +1202,7 @@ lpost_country_field  = "lpost_country"
 
 
 def libpostal_transformer(addresses, addr_key_field, street_field, housenbr_field, postcode_field, city_field, country_field,
-                          check_result, similarity_threshold = similarity_threshold):
+                          check_results, similarity_threshold = similarity_threshold):
     
     t = datetime.now() 
     
@@ -1218,16 +1221,14 @@ def libpostal_transformer(addresses, addr_key_field, street_field, housenbr_fiel
     for field in "road", "house_number", "postcode", "city", "house", "country":
         libpost_addr["lpost_"+field] =libpost_addr.lpost.apply(lambda rec: rec[field] if field in rec else np.NAN)
             
-    if check_result:
-       # Keep only "close" results
-       libpost_addr, reject  = ignore_mismatch_keep_bests(libpost_addr, addr_key_field, 
-                                  street_fields_a = [street_field], housenbr_field_a = housenbr_field, postcode_field_a = postcode_field,       city_field_a = city_field,  
-                                  street_field_b = lpost_street_field,   housenbr_field_b = lpost_housenbr_field, postcode_field_b = lpost_postcode_field, city_field_b = lpost_city_field, 
-                                              secondary_sort_field=addr_key_field,
-                                              similarity_threshold=similarity_threshold)
-       vlog("Rejected lipbostal results: ")
-       vlog(reject)
-
+    if check_results:
+        # Keep only "close" results
+        libpost_addr, reject  = ignore_mismatch_keep_bests(libpost_addr, addr_key_field, 
+                                      street_fields_a = [street_field], housenbr_field_a = housenbr_field, postcode_field_a = postcode_field,       city_field_a = city_field,  
+                                      street_field_b = lpost_street_field,   housenbr_field_b = lpost_housenbr_field, postcode_field_b = lpost_postcode_field, city_field_b = lpost_city_field, 
+                                                  secondary_sort_field=addr_key_field)
+        vlog("Rejected lipbostal results: ")
+        vlog(reject)
     if libpost_addr.shape[0] == 0:
         
         return pd.DataFrame(columns=[osm_addr_field, addr_key_field])#,  libpost_addr

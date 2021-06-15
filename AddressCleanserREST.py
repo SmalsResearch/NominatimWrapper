@@ -18,12 +18,12 @@ from AddressCleanserUtils import *
 
 from IPython.display import display
 
+import json
 
 import sys, traceback
 
 from datetime import datetime, timedelta
 
-import json
 
 # In[2]:
 
@@ -56,7 +56,7 @@ from config_REST import *
 # AddressCleanserUtils.pbar.unregister()
 
 AddressCleanserUtils.with_dask         = False
-AddressCleanserUtils.check_osm_results = True
+AddressCleanserUtils.check_results = True
 
 AddressCleanserUtils.addr_key_field  = addr_key_field
 
@@ -145,13 +145,14 @@ default_transformers_sequence = [ ["orig"],
 transformers_sequence = os.getenv('TRANSFORMERS', default_transformers_sequence)
 
 if isinstance(transformers_sequence, str):
-   try:
-      transformers_sequence = json.loads(transformers_sequence)
-   except json.decoder.JSONDecodeError as er:
-      log("Cannot parse TRANSFORMERS parameter... uses the default one")
-      transformers_sequence = default_transformers_sequence
+    try:
+        transformers_sequence = json.loads(transformers_sequence)
+    except json.decoder.JSONDecodeError as er:
+        log("Cannot parse TRANSFORMERS parameter... uses the default one")
+        transformers_sequence = default_transformers_sequence
 
-
+    
+    
 vlog("Transformers:")
 vlog(transformers_sequence)
 
@@ -160,7 +161,7 @@ vlog(transformers_sequence)
 
 
 
-def process_address(data, check_osm_results=True, osm_structured=False):
+def process_address(data, check_results=True, osm_structured=False):
     vlog(f"Will process {data}")
     to_process_addresses = get_init_df(data)
     
@@ -176,7 +177,7 @@ def process_address(data, check_osm_results=True, osm_structured=False):
                                                                       street_field=street_field, housenbr_field=housenbr_field, 
                                                                       postcode_field=postcode_field, city_field=city_field,
                                                                       country_field=country_field,
-                                                                      check_osm_results=check_osm_results,
+                                                                      check_results=check_results,
                                                                       osm_structured=osm_structured)
             
         except Exception as e: 
@@ -198,7 +199,7 @@ def process_address(data, check_osm_results=True, osm_structured=False):
 # In[12]:
 
 
-def process_addresses(to_process_addresses, check_osm_results=True, osm_structured=False):
+def process_addresses(to_process_addresses, check_results=True, osm_structured=False):
     
     all_reject = pd.DataFrame()
     osm_addresses        = pd.DataFrame()
@@ -216,7 +217,7 @@ def process_addresses(to_process_addresses, check_osm_results=True, osm_structur
                                                                       street_field=street_field, housenbr_field=housenbr_field, 
                                                                       postcode_field=postcode_field, city_field=city_field,
                                                                       country_field=country_field,
-                                                                      check_osm_results=check_osm_results,
+                                                                      check_results=check_results,
                                                                       osm_structured=osm_structured)
             
             osm_addresses =      osm_addresses.append(osm_results, sort=False).drop_duplicates()
@@ -278,10 +279,10 @@ def search():
     no_reject = get_arg("no_reject", False)
     
     if get_arg("check_result", "yes") == "no":
-        check_osm_results = False
+        check_results = False
         log("Won't check OSM results")
     else:
-        check_osm_results = True
+        check_results = True
         log("Will check OSM results")
     
     if get_arg("struct_osm", "no") == "no":
@@ -291,7 +292,7 @@ def search():
         osm_structured = True
         log("Will call structured OSM")
     
-    res = process_address(data, check_osm_results, osm_structured)
+    res = process_address(data, check_results, osm_structured)
     log(f"Input: {data}")
     log(f"Result: {res}")
     log(f"no_reject: {no_reject}")
@@ -341,10 +342,10 @@ def batch():
 #           return ({"error": f"Invalid with_rejected value : {request.form['with_rejected']}"})
 
     if get_arg("check_result", "yes") == "no":
-        check_osm_results = False
+        check_results = False
         log("Won't check OSM results")
     else:
-        check_osm_results = True
+        check_results = True
         log("Will check OSM results")
         
     if get_arg("struct_osm", "no") == "no":
@@ -368,7 +369,7 @@ def batch():
         if field not in df: 
             return f"Field '{field} mandatory in file. All mandatory fields are {mandatory_fields}\n"
     
-    res, rejected_addresses = process_addresses(df, check_osm_results, osm_structured)
+    res, rejected_addresses = process_addresses(df, check_results, osm_structured)
     
     
     if type(res) == dict :
