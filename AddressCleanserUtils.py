@@ -507,7 +507,8 @@ def transform_and_process(to_process_addresses, transformers, addr_key_field, st
     
     transformed_addresses = apply_transformers(to_process_addresses, transformers, addr_key_field, 
                                                street_field=street_field, housenbr_field=housenbr_field, 
-                                               postcode_field=postcode_field, city_field=city_field, country_field=country_field)
+                                               postcode_field=postcode_field, city_field=city_field, country_field=country_field,
+                                               check_results=check_osm_results)
     
 
     if transformed_addresses.shape[0]==0:
@@ -929,7 +930,7 @@ def add_addr_out_columns(osm_results, prefix):
 # In[29]:
 
 
-def apply_transformers(addresses, transformers, addr_key_field, street_field, housenbr_field, postcode_field, city_field, country_field):
+def apply_transformers(addresses, transformers, addr_key_field, street_field, housenbr_field, postcode_field, city_field, country_field, check_results):
     
     if transformers == ["orig"]:
         return addresses.copy()
@@ -960,11 +961,11 @@ def apply_transformers(addresses, transformers, addr_key_field, street_field, ho
             transformed_addresses[street_field] = ""
 
         elif transformer == "libpostal": 
-            transformed_addresses = libpostal_transformer(transformed_addresses, addr_key_field, street_field, housenbr_field, postcode_field, city_field, country_field)
+            transformed_addresses = libpostal_transformer(transformed_addresses, addr_key_field, street_field, housenbr_field, postcode_field, city_field, country_field, check_results)
 #             display(transformed_addresses)
             
         elif transformer == "photon": 
-            transformed_addresses = photon_transformer(transformed_addresses, addr_key_field, street_field, housenbr_field, postcode_field, city_field, country_field)
+            transformed_addresses = photon_transformer(transformed_addresses, addr_key_field, street_field, housenbr_field, postcode_field, city_field, country_field, check_results)
         else :
             assert False, f"Wrong transformer type : {transformer}"
 
@@ -1121,7 +1122,7 @@ def process_photon(df, addr_field, photon_col, addr_key_field):
 
 
 def photon_transformer(addresses, addr_key_field, street_field, housenbr_field, postcode_field, city_field, country_field,
-                       similarity_threshold=similarity_threshold):
+                       check_result, similarity_threshold=similarity_threshold):
     
     t = datetime.now() 
     photon_addr = addresses[[addr_key_field, street_field, housenbr_field, postcode_field, city_field, country_field]].copy()
@@ -1132,11 +1133,15 @@ def photon_transformer(addresses, addr_key_field, street_field, housenbr_field, 
     # Send to Photon
     photon_res = process_photon(photon_addr, "photon_full_addr", "photon", addr_key_field = addr_key_field)
 
-    photon_res_sel = photon_keep_relevant_results(photon_res, photon_addr, addr_street_field=street_field, 
+    if check_result:
+	    photon_res_sel = photon_keep_relevant_results(photon_res, photon_addr, addr_street_field=street_field, 
                                                     addr_housenbr_field = housenbr_field,
                                                     addr_postcode_field = postcode_field,  addr_city_field = city_field,
                                                     addr_country_field  = country_field,
                                                     addr_key_field = addr_key_field,  similarity_threshold=similarity_threshold)
+    else:
+         photon_res_sel = photon_res
+
     if photon_res_sel.shape[0] == 0:
         return photon_res_sel
     
@@ -1194,7 +1199,7 @@ lpost_country_field  = "lpost_country"
 
 
 def libpostal_transformer(addresses, addr_key_field, street_field, housenbr_field, postcode_field, city_field, country_field,
-                          similarity_threshold = similarity_threshold):
+                          check_result, similarity_threshold = similarity_threshold):
     
     t = datetime.now() 
     
@@ -1213,13 +1218,16 @@ def libpostal_transformer(addresses, addr_key_field, street_field, housenbr_fiel
     for field in "road", "house_number", "postcode", "city", "house", "country":
         libpost_addr["lpost_"+field] =libpost_addr.lpost.apply(lambda rec: rec[field] if field in rec else np.NAN)
             
-    # Keep only "close" results
-    libpost_addr, reject  = ignore_mismatch_keep_bests(libpost_addr, addr_key_field, 
+    if check_result:
+       # Keep only "close" results
+       libpost_addr, reject  = ignore_mismatch_keep_bests(libpost_addr, addr_key_field, 
                                   street_fields_a = [street_field], housenbr_field_a = housenbr_field, postcode_field_a = postcode_field,       city_field_a = city_field,  
                                   street_field_b = lpost_street_field,   housenbr_field_b = lpost_housenbr_field, postcode_field_b = lpost_postcode_field, city_field_b = lpost_city_field, 
-                                              secondary_sort_field=addr_key_field)
-    vlog("Rejected lipbostal results: ")
-    vlog(reject)
+                                              secondary_sort_field=addr_key_field,
+                                              similarity_threshold=similarity_threshold)
+       vlog("Rejected lipbostal results: ")
+       vlog(reject)
+
     if libpost_addr.shape[0] == 0:
         
         return pd.DataFrame(columns=[osm_addr_field, addr_key_field])#,  libpost_addr

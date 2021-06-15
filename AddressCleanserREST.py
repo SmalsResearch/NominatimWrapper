@@ -23,6 +23,7 @@ import sys, traceback
 
 from datetime import datetime, timedelta
 
+import json
 
 # In[2]:
 
@@ -142,6 +143,15 @@ default_transformers_sequence = [ ["orig"],
 
 
 transformers_sequence = os.getenv('TRANSFORMERS', default_transformers_sequence)
+
+if isinstance(transformers_sequence, str):
+   try:
+      transformers_sequence = json.loads(transformers_sequence)
+   except json.decoder.JSONDecodeError as er:
+      log("Cannot parse TRANSFORMERS parameter... uses the default one")
+      transformers_sequence = default_transformers_sequence
+
+
 vlog("Transformers:")
 vlog(transformers_sequence)
 

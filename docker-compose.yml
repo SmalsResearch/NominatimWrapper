@@ -6,6 +6,7 @@ services:
         dockerfile: Docker/Dockerfile_photon
         args: 
            - photon_data=Docker/photon.tar.gz
+        network: host
     ports:
       - "2322:2322"
       
@@ -13,6 +14,7 @@ services:
     build: 
         context: .
         dockerfile: Docker/Dockerfile_libpostal
+        network: host 
     ports:
             - "7070:8080"
     environment: 
@@ -23,6 +25,7 @@ services:
     build: 
         context: .
         dockerfile: Docker/Dockerfile_wrapper
+        network: host 
     ports:
       - "5000:5000"
     environment:
