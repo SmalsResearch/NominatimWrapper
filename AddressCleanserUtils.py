@@ -580,7 +580,7 @@ def get_osm(addr, accept_language = ""): #lg = "en,fr,nl"
                                     })
     
     url = "http://%s/search.php?%s"%(osm_host, params)
-    
+    vlog(f"Call to OSM: {url}")
     try: 
         with urllib.request.urlopen(url) as response:
             res = response.read()
@@ -591,11 +591,11 @@ def get_osm(addr, accept_language = ""): #lg = "en,fr,nl"
         raise Exception (f"Cannot get OSM results ({osm_host}): {e}") 
 
 
-# In[9]:
+# In[2]:
 
 
 def get_osm_struct(street, housenumber, postcode, city, country, accept_language = ""): #lg = "en,fr,nl"
-    params = urllib.parse.urlencode({"street": f"{street}, {housenumber}" if len(street.strip())>0 else "" ,
+    params = urllib.parse.urlencode({"street": f"{street}, {housenumber}" if pd.notnull(street) and len(str(street).strip())>0 else "" ,
                                      "city":city,
                                      "postalcode": postcode,
                                      "country": country,
@@ -607,7 +607,7 @@ def get_osm_struct(street, housenumber, postcode, city, country, accept_language
                                     })
     
     url = "http://%s/search.php?%s"%(osm_host, params)
-#     print(url)
+    vlog(f"Call to OSM: {url}")
     try: 
         with urllib.request.urlopen(url) as response:
             res = response.read()

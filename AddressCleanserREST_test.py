@@ -152,7 +152,7 @@ call_ws({street_field:   "Av. Fonsny",
          country_field:  "Belgium"}, check_result=True, structured_osm=False)
 
 
-# In[20]:
+# In[21]:
 
 
 call_ws({street_field:   "", 
@@ -184,7 +184,7 @@ call_ws({street_field:   "Fechtergasse 16/13 1090 Wenen",
 
 # ## Batch calls (row by row)
 
-# In[126]:
+# In[38]:
 
 
 addresses = get_addresses("address.csv.gz")
@@ -228,11 +228,12 @@ addresses
 
 # ### Single block
 
-# In[53]:
+# In[ ]:
 
 
 # Only geocoding
-call_ws_batch(addresses, mode="geo", check_result=True)
+# addresses["StreetFR"] = ""
+call_ws_batch(addresses, mode="geo", check_result=True, structured_osm=True)
 
 
 # In[62]:
