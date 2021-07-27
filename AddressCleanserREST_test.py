@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
+# In[10]:
 
 
 import pandas as pd
@@ -28,19 +28,19 @@ import matplotlib.pyplot as plt
 from IPython.display import display
 
 
-# In[2]:
+# In[11]:
 
 
 import urllib3
 
 
-# In[3]:
+# In[12]:
 
 
 http = urllib3.PoolManager()
 
 
-# In[4]:
+# In[13]:
 
 
 from config_batch import * 
@@ -48,7 +48,7 @@ from config_batch import *
 
 # # Functions
 
-# In[5]:
+# In[14]:
 
 
 ws_hostname = "127.0.1.1"
@@ -57,7 +57,7 @@ ws_hostname = "10.1.0.45"
 # ws_hostname = "192.168.1.3"
 
 
-# In[6]:
+# In[15]:
 
 
 def call_ws(addr_data, check_result=True, structured_osm=False): #lg = "en,fr,nl"
@@ -72,7 +72,7 @@ def call_ws(addr_data, check_result=True, structured_osm=False): #lg = "en,fr,nl
                                      "struct_osm" : "yes" if structured_osm else "no"
                                     })
     url = f"http://{ws_hostname}:5000/search/?{params}"
-    
+    print(url)
     try:
         with urllib.request.urlopen(url) as response:
             res = response.read()
@@ -85,7 +85,7 @@ def call_ws(addr_data, check_result=True, structured_osm=False): #lg = "en,fr,nl
     
 
 
-# In[7]:
+# In[16]:
 
 
 def call_ws_batch(addr_data, mode="geo", with_reject=False, check_result=True, structured_osm=False): #lg = "en,fr,nl"
@@ -122,7 +122,7 @@ def call_ws_batch(addr_data, mode="geo", with_reject=False, check_result=True, s
     return res
 
 
-# In[8]:
+# In[17]:
 
 
 def expand_json(addresses):
@@ -142,7 +142,7 @@ def expand_json(addresses):
 
 # ## Single address calls
 
-# In[12]:
+# In[18]:
 
 
 call_ws({street_field:   "Av. Fonsny", 
@@ -152,27 +152,27 @@ call_ws({street_field:   "Av. Fonsny",
          country_field:  "Belgium"}, check_result=True, structured_osm=False)
 
 
-# In[13]:
+# In[20]:
 
 
-call_ws({street_field:   "Avenue Louise", 
-         housenbr_field: "375",
-         city_field:     "Ixelles",
-         postcode_field: "1050",
+call_ws({street_field:   "", 
+         housenbr_field: "",
+         city_field:     "Dinant",
+         postcode_field: "5500",
          country_field:  "Belgium"}, check_result=True, structured_osm=True)
 
 
-# In[17]:
+# In[11]:
 
 
-call_ws({street_field:   "Fechtergasse 16/13", 
-         housenbr_field: "",
+call_ws({street_field:   "Fechtergasse", 
+         housenbr_field: "16/13",
          city_field:     "Wenen",
          postcode_field: "1090",
          country_field:  "Oostenrijk"}, check_result=False, structured_osm=False)
 
 
-# In[22]:
+# In[12]:
 
 
 call_ws({street_field:   "Fechtergasse 16/13 1090 Wenen", 
@@ -251,7 +251,7 @@ call_ws_batch(addresses, mode="long", with_reject=True)
 
 # ### Batch blocs
 
-# In[ ]:
+# In[21]:
 
 
 def call_ws_batch_chunks(addr_data, mode="geo", with_reject=False, check_result=True, structured_osm=False, chunk_size=100): 
@@ -273,7 +273,7 @@ df_res = call_ws_batch_chunks(addresses, chunk_size=10)
 df_res
 
 
-# In[24]:
+# In[1]:
 
 
 df_res.method.value_counts()
@@ -281,7 +281,7 @@ df_res.method.value_counts()
 
 # ## Comparing options
 
-# In[128]:
+# In[19]:
 
 
 addresses = get_addresses("address.csv.gz")
@@ -289,7 +289,7 @@ addresses = addresses[addresses[country_field] == "Belgique"]
 addresses = addresses.sample(10000).copy()
 
 
-# In[129]:
+# In[22]:
 
 
 results = {}
@@ -310,7 +310,7 @@ print("Iterations per seconds:")
 it_per_seconds
 
 
-# In[130]:
+# In[23]:
 
 
 print("Match rate")
@@ -318,7 +318,7 @@ pd.DataFrame({k1: {k2: results[(k1,k2)].shape[0]/addresses.shape[0] for k2 in ["
                   for k1 in  ["check","nocheck"]})
 
 
-# In[131]:
+# In[24]:
 
 
 print("Match rate (without nostreet)")
@@ -326,7 +326,7 @@ pd.DataFrame({k1: {k2: results[(k1,k2)].query("method!='nostreet'").shape[0]/add
                   for k1 in  ["check","nocheck"]})
 
 
-# In[132]:
+# In[25]:
 
 
 print("Unmatched addresses")
@@ -337,7 +337,7 @@ for k1 in results:
     print(nomatch[country_field].value_counts())
 
 
-# In[133]:
+# In[26]:
 
 
 vc_values = pd.DataFrame(columns=results.keys(), index=results.keys())
@@ -394,7 +394,7 @@ for k1 in results:
 # display(vc_values.fillna(""))
 
 
-# In[134]:
+# In[27]:
 
 
 print("Common in both (disagree on place_id - disagree on values - disagree on values, ignoring number) / results only for row / results only for columns")

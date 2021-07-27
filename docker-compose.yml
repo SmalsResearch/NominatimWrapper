@@ -6,7 +6,7 @@ services:
         dockerfile: Docker/Dockerfile_photon
         args: 
            - photon_data=Docker/photon.tar.gz
-        network: host
+        # network: host
     ports:
       - "2322:2322"
       
@@ -14,26 +14,25 @@ services:
     build: 
         context: .
         dockerfile: Docker/Dockerfile_libpostal
-        network: host 
+        # network: host 
     ports:
             - "7070:8080"
     environment: 
       - NB_LPOST_WORKERS:1
 
   wrapper:
-          #network_mode: host
     build: 
         context: .
         dockerfile: Docker/Dockerfile_wrapper
-        network: host 
+        # network: host 
     ports:
       - "5000:5000"
     environment:
       - NB_WORKERS:4
       - PHOTON_HOST=photon:2322
       - LPOST_HOST=libpostal:8080
-      - OSM_HOST=10.1.0.45:8081 #172.17.0.2:8080 #172.17.0.2:8080  #10.1.0.45:7070
-      - LOG_LEVEL=high
+      - OSM_HOST=10.1.0.45:8080 #172.17.0.2:8080 #172.17.0.2:8080  #10.1.0.45:7070
+      - LOG_LEVEL=medium
 #       - TRANSFORMERS=[ ["orig"],
 #                           ["regex[init]"],
 #                           ["nonum"],

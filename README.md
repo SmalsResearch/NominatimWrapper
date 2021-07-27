@@ -150,7 +150,7 @@ To build the docker image on a machine with Internet access ("build machine") an
 - Transfer file nominatim_wrapper.tar.gz to the "run machine"
 - On the "run machine":  `docker load < nominatim_wrapper.tar.gz`
 
-# TEST
+# USAGE
 
 ## Photon
 
@@ -192,4 +192,26 @@ options :
 - struct_osm=yes|no (default:no): 
     - yes: use "structured" version of Nominatim (example: https://nominatim.openstreetmap.org/search.php?street=avenue+fonsny&city=bruxelles&postalcode=1060&format=jsonv2)
     - no: use "unstructured" version of Nominatim (example: https://nominatim.openstreetmap.org/search.php?q=avenue+fonsny,+1060+bruxelles&format=jsonv2)
+
+## Quality indicators
+
+Evaluating the quality of an anwser can be done in several ways. There are two aspects: 
+- Reliability: are we condifent about the answer?
+- Precision: how small is the identified area? If the user provides a precise address, does the answer locates the building, the street, the city?
+
+
+
+- Try first with "check_result=yes". If no result, try with “check_result=no”. 
+  If result in the first case, reliability is higher than in the second case.
+- In result, check "method":
+    - "orig": address did not go through any transformer before being sent to OSM, which returns a result for this address. 
+       Reliability is pretty good, especially if "check_result=yes";
+    - "nonum": "housenumber" field was not sent to OSM. Result can then not be at the house level:
+    - "libpostal": address was transformed by libpostal;
+    - "photon": address was transformed by photon.
+- In result, check “place_rank”: 
+    - 30 : precision is at house level;
+    - 26 : precision is at street level;
+    - 13-16 : city level;
+    - 4 : country level.
 

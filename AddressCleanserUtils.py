@@ -595,7 +595,7 @@ def get_osm(addr, accept_language = ""): #lg = "en,fr,nl"
 
 
 def get_osm_struct(street, housenumber, postcode, city, country, accept_language = ""): #lg = "en,fr,nl"
-    params = urllib.parse.urlencode({"street": f"{street}, {housenumber}",
+    params = urllib.parse.urlencode({"street": f"{street}, {housenumber}" if len(street.strip())>0 else "" ,
                                      "city":city,
                                      "postalcode": postcode,
                                      "country": country,
