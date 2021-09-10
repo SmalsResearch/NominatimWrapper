@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[10]:
+# In[48]:
 
 
 import pandas as pd
@@ -28,19 +28,19 @@ import matplotlib.pyplot as plt
 from IPython.display import display
 
 
-# In[11]:
+# In[41]:
 
 
 import urllib3
 
 
-# In[12]:
+# In[42]:
 
 
 http = urllib3.PoolManager()
 
 
-# In[13]:
+# In[43]:
 
 
 from config_batch import * 
@@ -48,7 +48,7 @@ from config_batch import *
 
 # # Functions
 
-# In[14]:
+# In[44]:
 
 
 ws_hostname = "127.0.1.1"
@@ -57,7 +57,7 @@ ws_hostname = "10.1.0.45"
 # ws_hostname = "192.168.1.3"
 
 
-# In[15]:
+# In[45]:
 
 
 def call_ws(addr_data, check_result=True, structured_osm=False): #lg = "en,fr,nl"
@@ -122,7 +122,7 @@ def call_ws_batch(addr_data, mode="geo", with_reject=False, check_result=True, s
     return res
 
 
-# In[17]:
+# In[46]:
 
 
 def expand_json(addresses):
@@ -142,7 +142,7 @@ def expand_json(addresses):
 
 # ## Single address calls
 
-# In[18]:
+# In[47]:
 
 
 call_ws({street_field:   "Av. Fonsny", 
@@ -228,7 +228,7 @@ addresses
 
 # ### Single block
 
-# In[ ]:
+# In[39]:
 
 
 # Only geocoding

@@ -1143,7 +1143,8 @@ def photon_transformer(addresses, addr_key_field, street_field, housenbr_field, 
                                                         addr_country_field  = country_field,
                                                         addr_key_field = addr_key_field,  similarity_threshold=similarity_threshold)
     else:
-         photon_res_sel = photon_res
+         photon_res_sel = photon_res.merge(addresses[[addr_key_field,  street_field, housenbr_field, postcode_field, 
+                                                 city_field, country_field]])
             
     if photon_res_sel.shape[0] == 0:
         return photon_res_sel
