@@ -23,6 +23,7 @@ import json
 import sys, traceback
 
 from datetime import datetime, timedelta
+import time
 
 
 # In[2]:
@@ -155,6 +156,78 @@ if isinstance(transformers_sequence, str):
     
 vlog("Transformers:")
 vlog(transformers_sequence)
+
+
+# In[ ]:
+
+
+# Check that Nominatim server is running properly
+try: 
+    osm = get_osm("Bruxelles")
+    assert "Bruxelles" in osm[0]["namedetails"]["name:fr"] 
+    
+    log("OSM working properly")
+    
+    
+except Exception as e: 
+    log("OSM not up & running")
+    log(f"OSM host: {AddressCleanserUtils.osm_host}")
+    #raise e
+
+
+# In[ ]:
+
+
+# Check that Libpostal is running properly
+delay=5
+for i in range(10):
+
+    try: 
+        lpost = parse_address("Bruxelles")
+        assert lpost[0][0] == "bruxelles"
+        log("Libpostal working properly")
+        break
+        
+    except Exception as e: 
+        log("Libpostal not up & running ")
+        
+        log(f"Try again in {delay} seconds")
+        time.sleep(delay)
+    #raise e
+if i == 9:
+    log("Libpostal not up & running !")
+    log(f"Libpostal: {AddressCleanserUtils.libpostal_host}")
+    
+
+
+# In[ ]:
+
+
+# Check that Photon server is running properly
+delay=5
+for i in range(10):
+    try: 
+        ph = get_photon("Bruxelles")
+        assert "Brussels" in ph["features"][0]["properties"]["name"]
+        log("Photon working properly")
+        break
+
+
+    except Exception as e: 
+        log("Photon not up & running ")
+        log(f"Try again in {delay} seconds")
+        time.sleep(delay)
+        
+        #raise e
+if i == 9:
+        log("Photon not up & running ! Start it with 'nohup java -jar photon-*.jar &'")
+        log(f"Photon host: {AddressCleanserUtils.photon_host}")
+
+
+# In[2]:
+
+
+
 
 
 # In[10]:

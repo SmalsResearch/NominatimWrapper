@@ -6,6 +6,10 @@ check_with_transformed = True
 # If False, osm result is compared to data input.
 # True allows to accept more results (but also more false positive)
 
+photon_check_results = True 
+# Makes sense only if either data is sent as structured (i.e., not the full address inside the same field), or 
+# if photon is preceded by libpostal
+
 osm_structured = False
 
 with_rest_libpostal = True

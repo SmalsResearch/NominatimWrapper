@@ -142,7 +142,7 @@ def expand_json(addresses):
 
 # ## Single address calls
 
-# In[47]:
+# In[49]:
 
 
 call_ws({street_field:   "Av. Fonsny", 

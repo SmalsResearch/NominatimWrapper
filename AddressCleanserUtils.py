@@ -1039,6 +1039,8 @@ def photon_keep_relevant_results(photon_results, addresses,
     photon_ext["fake_house_number"] = ""
     
 #     display(photon_ext)
+    vlog("Will compare photon results: ")
+    vlog(photon_ext)
     keep, reject  = ignore_mismatch_keep_bests(photon_ext, addr_key_field, 
                                   street_fields_a = [photon_street_field], housenbr_field_a = "fake_house_number", postcode_field_a = photon_postcode_field, city_field_a = photon_city_field, 
                                   street_field_b =   addr_street_field, housenbr_field_b = "fake_house_number", postcode_field_b =   addr_postcode_field, city_field_b =  addr_city_field,
@@ -1084,7 +1086,7 @@ def photon_parse_and_split(res, addr_field, photon_col):
             photon_results[f] = ""
     
     if photon_name_field in photon_results:
-        photon_results[photon_street_field] = photon_results[photon_street_field].fillna(photon_results[photon_name_field])
+        photon_results[photon_street_field] = photon_results[photon_street_field].replace("", pd.NA).fillna(photon_results[photon_name_field])
     
     photon_results["lat"] = photon_results["geometry"].apply(lambda x: x["coordinates"][0])
     photon_results["lon"] = photon_results["geometry"].apply(lambda x: x["coordinates"][1])
@@ -1113,7 +1115,7 @@ def process_photon(df, addr_field, photon_col, addr_key_field):
     photon_results = photon_parse_and_split(to_process, addr_field, photon_col)
     
     vlog(f"Photon got {photon_results.shape[0]} results for {df.shape[0]} addresses")
-    
+    vlog(photon_results)
     
     photon_results = df[[addr_key_field, addr_field]].merge(photon_results)
     
@@ -1135,7 +1137,7 @@ def photon_transformer(addresses, addr_key_field, street_field, housenbr_field, 
     # Send to Photon
     photon_res = process_photon(photon_addr, "photon_full_addr", "photon", addr_key_field = addr_key_field)
 
-    if check_results:
+    if photon_check_results:
 
         photon_res_sel = photon_keep_relevant_results(photon_res, photon_addr, addr_street_field=street_field, 
                                                         addr_housenbr_field = housenbr_field,
