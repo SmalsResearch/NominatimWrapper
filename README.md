@@ -192,6 +192,9 @@ options :
 - struct_osm=yes|no (default:no): 
     - yes: use "structured" version of Nominatim (example: https://nominatim.openstreetmap.org/search.php?street=avenue+fonsny&city=bruxelles&postalcode=1060&format=jsonv2)
     - no: use "unstructured" version of Nominatim (example: https://nominatim.openstreetmap.org/search.php?q=avenue+fonsny,+1060+bruxelles&format=jsonv2)
+- extra_house_nbr=yes|no (default: yes). Often, OSM does not know exact positioning of a building, and locates only its street. In this case, "addr_out_number" is empty. If house number contains a box, it may be removed in the output. This could be OK for geocoding, but not for data cleansing:
+    - yes: 3 extra fields are added in the input: "in_house_nbr" contains house number given in input ; "lpost_house_nbr" contains house number provided by libpostal receiving contatenation of street and house number (from input), and "lpost_unit" contains "unit" given by libpostal. If libpostal provides several "house numbers", they are joined by a ";".
+    - no: extra fields are not computed. Avoid a call to libpostal for each address, which may improve performance if this information is not needed
 
 ## Quality indicators
 
