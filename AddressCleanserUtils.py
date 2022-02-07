@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[7]:
+# In[37]:
 
 
 import pandas as pd
@@ -52,7 +52,7 @@ from config import *
 within_jupyter=False
 
 
-# In[ ]:
+# In[33]:
 
 
 
@@ -466,7 +466,7 @@ def retry_with_low_place_rank(osm_results, sent_addresses,
     return osm_results
 
 
-# In[ ]:
+# In[71]:
 
 
 def find_house_number(street, house_number):
@@ -485,6 +485,49 @@ def add_extra_house_number(osm_addresses, addresses, street_field, housenbr_fiel
     result["extra_house_nbr"] = result.apply(lambda row: find_house_number(row[street_field], row[housenbr_field]), axis=1)
 
     return result[np.concatenate([osm_addresses.keys(), ["extra_house_nbr"]])]
+
+def get_lpost_house_number(street):
+    lpost = parse_address(street)
+    housenbr = ";".join([y for (y, x) in lpost if x=="house_number"])
+    boxnbr = ";".join([y for (y, x) in lpost if x=="unit"])
+#     log(f"get_lp : '{street}' - {housenbr} - {boxnbr}")
+#     log(lpost)
+    #return {"lpost_house_nbr": housenbr, "lpost_box_nbr": boxnbr}
+    return [housenbr, boxnbr]
+    
+def add_extra_house_number(osm_addresses, addresses, street_field, housenbr_field, city_field, postcode_field ):
+    vlog("Start adding extra house number")
+    if "addr_out_number" not in osm_addresses:
+        return osm_addresses
+    
+    
+    result = osm_addresses.merge(addresses)
+    result["in_house_nbr"] = result[housenbr_field]
+    
+    lp = result.fillna("").apply(lambda row: get_lpost_house_number(f"{row[street_field]} {row[housenbr_field]}, {row[postcode_field]} {row[city_field]}".strip()), axis=1,  result_type ='expand')
+    
+    #lp= (result[street_field] + " " + result[housenbr_field]).apply(get_lpost_house_number, result_type ='expand')#, axis=1)
+#     log(f"lp: {lp}")
+    result[["lpost_house_nbr", "lpost_unit"]] = lp
+    vlog("End of  adding extra house number")
+    return result[np.concatenate([osm_addresses.keys(), ["in_house_nbr", "lpost_house_nbr", "lpost_unit"]])]
+
+
+# In[64]:
+
+
+# def parse_address(street):
+#     return [("20",  "house_number"), ("a", "unit")]
+# osm_addresses = pd.DataFrame({"addr_key" : [1], "addr_out_number": [""]})
+# addresses = pd.DataFrame({"addr_key" : [1], "street_field": ["avenue fonsnsy 30"], "housenbr_field": [""]})
+
+# add_extra_house_number(osm_addresses, addresses, "street_field", "housenbr_field")
+
+
+# In[29]:
+
+
+
 
 
 # In[ ]:
@@ -1164,8 +1207,7 @@ def photon_transformer(addresses, addr_key_field, street_field, housenbr_field, 
 
 # ## Libpostal
 
-# In[36]:
-
+# In[25]:
 
 
 if with_rest_libpostal:
