@@ -479,14 +479,14 @@ def find_house_number(street, house_number):
     lpost = {x: y for (y, x) in lpost}
     return lpost["house_number"] if "house_number" in lpost else np.NaN
 
-def add_extra_house_number(osm_addresses, addresses, street_field, housenbr_field):
-    if "addr_out_number" not in osm_addresses:
-        return osm_addresses
+# def add_extra_house_number(osm_addresses, addresses, street_field, housenbr_field):
+#     if "addr_out_number" not in osm_addresses:
+#         return osm_addresses
         
-    result = osm_addresses.merge(addresses)
-    result["extra_house_nbr"] = result.apply(lambda row: find_house_number(row[street_field], row[housenbr_field]), axis=1)
+#     result = osm_addresses.merge(addresses)
+#     result["extra_house_nbr"] = result.apply(lambda row: find_house_number(row[street_field], row[housenbr_field]), axis=1)
 
-    return result[np.concatenate([osm_addresses.keys(), ["extra_house_nbr"]])]
+#     return result[np.concatenate([osm_addresses.keys(), ["extra_house_nbr"]])]
 
 def get_lpost_house_number(street):
     lpost = parse_address(street)
@@ -513,6 +513,14 @@ def add_extra_house_number(osm_addresses, addresses, street_field, housenbr_fiel
     result[["lpost_house_nbr", "lpost_unit"]] = lp
     vlog("End of  adding extra house number")
     return result[np.concatenate([osm_addresses.keys(), ["in_house_nbr", "lpost_house_nbr", "lpost_unit"]])]
+
+
+# In[ ]:
+
+
+# add_extra_house_number(osm_results, to_process_addresses, 
+#                                                      street_field=street_field, housenbr_field=housenbr_field,
+#                                                      postcode_field=postcode_field, city_field=city_field)
 
 
 # In[64]:
