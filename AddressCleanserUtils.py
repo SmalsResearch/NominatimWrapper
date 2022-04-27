@@ -977,7 +977,7 @@ def add_addr_out_columns(osm_results, prefix):
 
 # # Transformers
 
-# In[29]:
+# In[1]:
 
 
 def apply_transformers(addresses, transformers, addr_key_field, street_field, housenbr_field, postcode_field, 
@@ -1013,6 +1013,9 @@ def apply_transformers(addresses, transformers, addr_key_field, street_field, ho
         
         elif transformer == "nozip":
             transformed_addresses[postcode_field] = ""
+
+        elif transformer == "nocountry":
+            transformed_addresses[country_field] = ""
 
         elif transformer == "libpostal": 
             transformed_addresses = libpostal_transformer(transformed_addresses, addr_key_field, street_field, housenbr_field, postcode_field, 
