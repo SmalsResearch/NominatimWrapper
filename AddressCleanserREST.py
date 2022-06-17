@@ -66,6 +66,7 @@ AddressCleanserUtils.regex_replacements = regex_replacements
 AddressCleanserUtils.use_osm_parent = use_osm_parent 
 
 
+
 # In[ ]:
 
 
@@ -90,6 +91,7 @@ else :
 
 
 
+
 # In[ ]:
 
 
@@ -101,6 +103,7 @@ def get_init_df(data):
                           city_field:     data["city"],
                           country_field:  data["country"]
                           }])
+
 
 
 # In[ ]:
@@ -264,7 +267,6 @@ if i == 9:
 
 
 # In[ ]:
-
 
 
 def process_address(data, check_results=True, osm_structured=False, with_extra_house_number=True):

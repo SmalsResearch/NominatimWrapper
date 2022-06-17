@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[2]:
+# In[ ]:
 
 
 import pandas as pd
@@ -46,13 +46,13 @@ logging.getLogger("urllib3").setLevel(logging.WARNING)
 
 
 
-# In[3]:
+# In[ ]:
 
 
 starting_time = datetime.now()
 
 
-# In[4]:
+# In[ ]:
 
 
 config_file = "config_batch"
@@ -84,7 +84,7 @@ for opt, arg in opts:
         
 
 
-# In[24]:
+# In[ ]:
 
 
 if AddressCleanserUtils.within_jupyter :
@@ -102,7 +102,7 @@ if AddressCleanserUtils.within_jupyter :
 # %matplotlib inline
 
 
-# In[6]:
+# In[ ]:
 
 
 import importlib
@@ -110,7 +110,7 @@ log(f"Loading config file {config_file}")
 config_module = importlib.import_module(config_file)
 
 
-# In[7]:
+# In[ ]:
 
 
 # Check that some required variables are present in the configuration file
@@ -128,7 +128,7 @@ for var_name in field_names  + other_var_names:
 
 
 
-# In[8]:
+# In[ ]:
 
 
 AddressCleanserUtils.street_field    = config_module.street_field
@@ -145,13 +145,13 @@ AddressCleanserUtils.use_osm_parent      = use_osm_parent
 AddressCleanserUtils.with_rest_libpostal = with_rest_libpostal
 
 
-# In[9]:
+# In[ ]:
 
 
 AddressCleanserUtils.pbar.register()
 
 
-# In[10]:
+# In[ ]:
 
 
 # Check that Nominatim server is running properly
@@ -168,7 +168,7 @@ except Exception as e:
     raise e
 
 
-# In[15]:
+# In[ ]:
 
 
 # In old version of Nominatim, page "details.php" could NOT return a JSON result, allowing to get place details from a place id
@@ -187,7 +187,7 @@ if AddressCleanserUtils.use_osm_parent:
         raise e
 
 
-# In[18]:
+# In[ ]:
 
 
 # Check that Photon server is running properly
@@ -203,7 +203,7 @@ except Exception as e:
     raise e
 
 
-# In[25]:
+# In[ ]:
 
 
 # Check that Libpostal is running properly
@@ -231,7 +231,7 @@ log(f"Got {addresses.shape[0]} addresses")
 log(addresses)
 
 
-# In[14]:
+# In[ ]:
 
 
 if sample_size and sample_size < addresses.shape[0]:
@@ -239,7 +239,7 @@ if sample_size and sample_size < addresses.shape[0]:
     addresses = addresses.sample(sample_size)
 
 
-# In[15]:
+# In[ ]:
 
 
 # Check that all required fields are present in addresses dataframe
@@ -248,14 +248,14 @@ for field in field_names:
     assert config_module.__getattribute__(field) in addresses, f"Field {field} missing in data !"
 
 
-# In[16]:
+# In[ ]:
 
 
 # Check that the address identifier defined in config_module.addr_key_field is unique
 assert addresses[addresses[config_module.addr_key_field].duplicated()].shape[0] == 0, "Key should be unique"
 
 
-# In[17]:
+# In[ ]:
 
 
 vlog("Stripping and upper casing...")
@@ -264,7 +264,7 @@ addresses = addresses.apply(lambda col: col.fillna("").astype(str).str.strip().s
 
 # # Main loop 
 
-# In[18]:
+# In[ ]:
 
 
 transformers_sequence = [ ["orig"],
@@ -280,7 +280,7 @@ transformers_sequence = [ ["orig"],
                         ]
 
 
-# In[19]:
+# In[ ]:
 
 
 def main_loop(chunk):
@@ -352,7 +352,7 @@ def main_loop(chunk):
 
 
 
-# In[20]:
+# In[ ]:
 
 
 # Compute the number of chunks
@@ -373,7 +373,7 @@ log(f"Chunk_size: {chunk_size}")
 # Processing a chunk may require at some point a huge amount of memory. A single chunk with a few millions addresses may result in memory error ; this is why we split the main addresses dataframe is smaller chunks.
 # 
 
-# In[21]:
+# In[ ]:
 
 
 stats = []
@@ -425,25 +425,25 @@ else:
         stats.extend(chunk_stats)
 
 
-# In[22]:
+# In[ ]:
 
 
 # inclusion_test("NEU", "NEUCHATEAU")
 
 
-# In[23]:
+# In[ ]:
 
 
 addresses
 
 
-# In[24]:
+# In[ ]:
 
 
 # get_osm("6840 NEUFCHÂTEAU")
 
 
-# In[25]:
+# In[ ]:
 
 
 if with_dask:
@@ -454,7 +454,7 @@ if with_dask:
     visualize([prof, rprof])
 
 
-# In[26]:
+# In[ ]:
 
 
 # osm_addresses.SIM_street_which.value_counts() /osm_addresses.shape[0] #.plot.pie()
@@ -473,7 +473,7 @@ if with_dask:
 # "rejected_addresses_final" contains the only addresses for which all results have been rejected.
 # 
 
-# In[27]:
+# In[ ]:
 
 
 rejected_addresses_final =  rejected_addresses[rejected_addresses["reject_reason"] == "mismatch"]
@@ -501,31 +501,31 @@ log("Rejected addresses: ")
 log(rejected_addresses_final)
 
 
-# In[28]:
+# In[ ]:
 
 
 log(f"Number of unique rejected addresses: {rejected_addresses_final[config_module.addr_key_field].nunique()}")
 
 
-# In[29]:
+# In[ ]:
 
 
 log(f"Number of unique city-streets in rejected addresses: {rejected_addresses_final[[config_module.postcode_field, config_module.street_field]].drop_duplicates().shape[0]}")
 
 
-# In[30]:
+# In[ ]:
 
 
 rejected_addresses_final[rejected_addresses_final.addr_out_street.isnull()]
 
 
-# In[31]:
+# In[ ]:
 
 
 rejected_addresses_final[rejected_addresses_final.addr_out_street.notnull()]#.drop(["method"], axis=1).drop_duplicates()
 
 
-# In[32]:
+# In[ ]:
 
 
 # Swap street - city
@@ -536,7 +536,7 @@ log(x)
 log(f"Number of unique addresses: {x[config_module.addr_key_field].nunique()}")
 
 
-# In[33]:
+# In[ ]:
 
 
 # Other mismatches
@@ -545,20 +545,20 @@ rejected_addresses_final[(str_cmp<=0.5) | (rejected_addresses_final.addr_out_str
 
 # # No match
 
-# In[34]:
+# In[ ]:
 
 
 log("Addresses with no match (but some matches where rejected)")
 log(addresses[~addresses[config_module.addr_key_field].isin(osm_addresses[config_module.addr_key_field]) & addresses[config_module.addr_key_field].isin(rejected_addresses[config_module.addr_key_field])])
 
 
-# In[35]:
+# In[ ]:
 
 
 rejected_addresses
 
 
-# In[36]:
+# In[ ]:
 
 
 log("Addresses with no match at all")
@@ -566,20 +566,20 @@ no_match = addresses[~addresses[config_module.addr_key_field].isin(osm_addresses
 log(no_match)
 
 
-# In[37]:
+# In[ ]:
 
 
 log(f"Number of unique city-streets in no match addresses: {no_match[[config_module.postcode_field, config_module.street_field]].drop_duplicates().shape[0]}")
 
 
-# In[38]:
+# In[ ]:
 
 
 log("Main cities in no match addresses: ")
 log(no_match[config_module.city_field].value_counts().head(10))
 
 
-# In[39]:
+# In[ ]:
 
 
 log("Main streets in no match addresses: ")
@@ -594,61 +594,61 @@ log(no_match[config_module.street_field].value_counts().head(10))
 # 
 # We then consider that house number is not reliable enough and compute our own house number field, named "extra_house_nbr"
 
-# In[40]:
+# In[ ]:
 
 
 log("Add extra house number")
 osm_addresses = add_extra_house_number(osm_addresses, addresses, street_field=config_module.street_field, housenbr_field=config_module.housenbr_field)
 
 
-# In[41]:
+# In[ ]:
 
 
 # osm_addresses.drop("extra_house_nbr", axis=1, inplace=True)
 
 
-# In[42]:
+# In[ ]:
 
 
 ex_hs_nb = osm_addresses[[config_module.addr_key_field, "osm_addr_in", "extra_house_nbr", "addr_out_number"]].replace("", np.NaN)
 
 
-# In[43]:
+# In[ ]:
 
 
 log("Add new information: ")
 log(ex_hs_nb[ex_hs_nb.addr_out_number.isnull() & ex_hs_nb.extra_house_nbr.notnull()])
 
 
-# In[44]:
+# In[ ]:
 
 
 log("No number at all: ")
 log(ex_hs_nb[ex_hs_nb.addr_out_number.isnull() & ex_hs_nb.extra_house_nbr.isnull()])
 
 
-# In[45]:
+# In[ ]:
 
 
 log("Agreed: ")
 log(ex_hs_nb[ex_hs_nb.addr_out_number.notnull() & ex_hs_nb.extra_house_nbr.notnull() & (ex_hs_nb.addr_out_number == ex_hs_nb.extra_house_nbr)])
 
 
-# In[46]:
+# In[ ]:
 
 
 log("Disagreed: ")
 log(ex_hs_nb[ex_hs_nb.addr_out_number.notnull() & ex_hs_nb.extra_house_nbr.notnull() & (ex_hs_nb.addr_out_number != ex_hs_nb.extra_house_nbr)])
 
 
-# In[47]:
+# In[ ]:
 
 
 log("Error: ") # There were no number in input, but OSM found one
 log(ex_hs_nb[ex_hs_nb.addr_out_number.notnull() & ex_hs_nb.extra_house_nbr.isnull()])
 
 
-# In[48]:
+# In[ ]:
 
 
 extra_address_stats = {
@@ -663,13 +663,13 @@ extra_address_stats = pd.DataFrame(extra_address_stats, index=["Count"]).T
 log(extra_address_stats)
 
 
-# In[49]:
+# In[ ]:
 
 
 # extra_address_stats.Count.plot.pie(label="",  autopct='%1.1f%%')
 
 
-# In[50]:
+# In[ ]:
 
 
 assert extra_address_stats.Count.sum() == osm_addresses.shape[0]
@@ -677,26 +677,26 @@ assert extra_address_stats.Count.sum() == osm_addresses.shape[0]
 
 # # Some stats
 
-# In[51]:
+# In[ ]:
 
 
 _stats = pd.DataFrame(stats)[["method","todo", "sent", "match", "match_26", "reject_rec", "reject_addr", "reject_mism"]]
 _stats = _stats.reset_index().groupby("method").sum().reset_index().sort_values("index").drop("index", axis=1)
 
 
-# In[52]:
+# In[ ]:
 
 
 assert osm_addresses.shape[0] == _stats["match"].sum()
 
 
-# In[53]:
+# In[ ]:
 
 
 log(f"Global match rate : {osm_addresses.shape[0]/addresses.shape[0]}")
 
 
-# In[54]:
+# In[ ]:
 
 
 rejected_count = rejected_addresses[~rejected_addresses[config_module.addr_key_field].isin(osm_addresses[config_module.addr_key_field])][config_module.addr_key_field].nunique()
@@ -707,19 +707,19 @@ nomatch_count = addresses[~addresses[config_module.addr_key_field].isin(osm_addr
 rejected_count, nomatch_count
 
 
-# In[55]:
+# In[ ]:
 
 
 #rejected_addresses[~rejected_addresses[config_module.addr_key_field].isin(osm_addresses[config_module.addr_key_field])]
 
 
-# In[56]:
+# In[ ]:
 
 
 # osm_addresses[osm_addresses.EntityNumber == "2.227.707.047"]
 
 
-# In[57]:
+# In[ ]:
 
 
 missing_address_count = addresses.shape[0] - osm_addresses.shape[0]
@@ -729,7 +729,7 @@ assert rejected_count + nomatch_count == missing_address_count
 # print("Missing : ", missing_address_count)
 
 
-# In[58]:
+# In[ ]:
 
 
 _stats = _stats.append(pd.DataFrame([{"method": "reject", "todo": rejected_count, "match": rejected_count},
@@ -737,7 +737,7 @@ _stats = _stats.append(pd.DataFrame([{"method": "reject", "todo": rejected_count
                              ]), sort=False)
 
 
-# In[59]:
+# In[ ]:
 
 
 _stats["match rate"] = _stats["match"]/_stats["sent"]
@@ -746,13 +746,13 @@ _stats["glob match rate"] = _stats["match"]/addresses.shape[0]
 log(_stats[_stats.match > 0])#.sort_values("match", ascending=False)
 
 
-# In[60]:
+# In[ ]:
 
 
 #
 
 
-# In[61]:
+# In[ ]:
 
 
 if AddressCleanserUtils.within_jupyter:
@@ -762,47 +762,47 @@ if AddressCleanserUtils.within_jupyter:
     plt.tight_layout()
 
 
-# In[62]:
+# In[ ]:
 
 
 log(f"Place ranks: \n{osm_addresses.place_rank.value_counts().to_string()}")
 
 
-# In[63]:
+# In[ ]:
 
 
 osm_addresses.place_rank.value_counts() / osm_addresses.shape[0]
 
 
-# In[64]:
+# In[ ]:
 
 
 if AddressCleanserUtils.within_jupyter:
     osm_addresses.place_rank.value_counts().plot.bar()
 
 
-# In[65]:
+# In[ ]:
 
 
 if AddressCleanserUtils.within_jupyter:
     osm_addresses.place_rank.value_counts().plot.pie()
 
 
-# In[66]:
+# In[ ]:
 
 
 if AddressCleanserUtils.within_jupyter:
     osm_addresses.addr_out_number.isnull().value_counts().plot.bar()
 
 
-# In[67]:
+# In[ ]:
 
 
 if AddressCleanserUtils.within_jupyter:
     addresses[config_module.housenbr_field].isnull().value_counts().plot.bar()
 
 
-# In[68]:
+# In[ ]:
 
 
 # Remark : only works when dask is not used 
@@ -814,7 +814,7 @@ if not with_dask:
         log(f"{key:12}: {ts[key]} ({100*ts[key]/tot:.3} %)")
 
 
-# In[85]:
+# In[ ]:
 
 
 log("Country statistics")

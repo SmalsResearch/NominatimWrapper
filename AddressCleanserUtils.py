@@ -55,8 +55,6 @@ within_jupyter=False
 # In[33]:
 
 
-
-
 def log(arg):
     if (type(arg) == pd.core.frame.DataFrame) or (type(arg) == pd.core.frame.Series):
         log_display(arg)
@@ -230,6 +228,7 @@ def inclusion_test(s1, s2):
 #     if res == 1:
 #         print(s1, s2, res)
     return res
+
 
 
 # In[ ]:
@@ -408,7 +407,8 @@ def ignore_mismatch_keep_bests(addr_matches, addr_key_field,
     
     distances["SIM_city"] =      city_compare(addr_matches[city_field_a].fillna(""), addr_matches[city_field_b].fillna(""))
     
-    elimination_rule = ((distances.SIM_zip < 0.1) & (distances.SIM_city < similarity_threshold)) |                         ((distances.SIM_street < similarity_threshold)  )
+    elimination_rule = ((distances.SIM_zip < 0.1) & (distances.SIM_city < similarity_threshold)) | \
+                        ((distances.SIM_street < similarity_threshold)  )
     
     rejected = addr_matches[elimination_rule].merge(distances, left_index=True, right_index=True).copy()
     
@@ -441,7 +441,9 @@ def retry_with_low_place_rank(osm_results, sent_addresses,
     vlog(f"    - numbers: {sent_addresses_26.shape[0]}")
     sent_addresses_26["housenbr_clean"] = sent_addresses_26[housenbr_field].fillna("").astype(str).str.extract("^([0-9]+)")[0]
 
-    sent_addresses_26["osm_addr_in"] =   sent_addresses_26[street_field  ].fillna("") + ", "+ sent_addresses_26["housenbr_clean"].fillna("") +", " +                                          sent_addresses_26[postcode_field].fillna("") + " " +sent_addresses_26[city_field    ].fillna("") +", "+                                          sent_addresses_26[country_field].fillna("")
+    sent_addresses_26["osm_addr_in"] =   sent_addresses_26[street_field  ].fillna("") + ", "+ sent_addresses_26["housenbr_clean"].fillna("") +", " + \
+                                         sent_addresses_26[postcode_field].fillna("") + " " +sent_addresses_26[city_field    ].fillna("") +", "+ \
+                                         sent_addresses_26[country_field].fillna("")
 
     vlog(" ; ".join([f"rank {r}: {c}" for r, c in sent_addresses_26.place_rank.value_counts().iteritems()]))
     #print(osm_results_26.place_rank.value_counts())
@@ -477,14 +479,14 @@ def find_house_number(street, house_number):
     lpost = {x: y for (y, x) in lpost}
     return lpost["house_number"] if "house_number" in lpost else np.NaN
 
-def add_extra_house_number(osm_addresses, addresses, street_field, housenbr_field):
-    if "addr_out_number" not in osm_addresses:
-        return osm_addresses
+# def add_extra_house_number(osm_addresses, addresses, street_field, housenbr_field):
+#     if "addr_out_number" not in osm_addresses:
+#         return osm_addresses
         
-    result = osm_addresses.merge(addresses)
-    result["extra_house_nbr"] = result.apply(lambda row: find_house_number(row[street_field], row[housenbr_field]), axis=1)
+#     result = osm_addresses.merge(addresses)
+#     result["extra_house_nbr"] = result.apply(lambda row: find_house_number(row[street_field], row[housenbr_field]), axis=1)
 
-    return result[np.concatenate([osm_addresses.keys(), ["extra_house_nbr"]])]
+#     return result[np.concatenate([osm_addresses.keys(), ["extra_house_nbr"]])]
 
 def get_lpost_house_number(street):
     lpost = parse_address(street)
@@ -511,6 +513,14 @@ def add_extra_house_number(osm_addresses, addresses, street_field, housenbr_fiel
     result[["lpost_house_nbr", "lpost_unit"]] = lp
     vlog("End of  adding extra house number")
     return result[np.concatenate([osm_addresses.keys(), ["in_house_nbr", "lpost_house_nbr", "lpost_unit"]])]
+
+
+# In[ ]:
+
+
+# add_extra_house_number(osm_results, to_process_addresses, 
+#                                                      street_field=street_field, housenbr_field=housenbr_field,
+#                                                      postcode_field=postcode_field, city_field=city_field)
 
 
 # In[64]:
@@ -559,7 +569,11 @@ def transform_and_process(to_process_addresses, transformers, addr_key_field, st
         step_stats = {"method": method, "todo":  0, "sent": 0, "match": 0, "match_26": 0, "reject_rec" :0, "reject_addr": 0, "reject_mism": 0}
         return pd.DataFrame(columns=[addr_key_field]), pd.DataFrame(columns=[addr_key_field, "reject_reason"]), step_stats
 
-    transformed_addresses["osm_addr_in"] =   transformed_addresses[street_field  ].fillna("") + ", "+                                              transformed_addresses[housenbr_field].fillna("") + ", "+                                              transformed_addresses[postcode_field].fillna("") + " " +                                             transformed_addresses[city_field    ].fillna("") + ", "+                                             transformed_addresses[country_field    ].fillna("") 
+    transformed_addresses["osm_addr_in"] =   transformed_addresses[street_field  ].fillna("") + ", "+ \
+                                             transformed_addresses[housenbr_field].fillna("") + ", "+ \
+                                             transformed_addresses[postcode_field].fillna("") + " " +\
+                                             transformed_addresses[city_field    ].fillna("") + ", "+\
+                                             transformed_addresses[country_field    ].fillna("") 
     
     
     transformed_addresses["osm_addr_in"]= transformed_addresses["osm_addr_in"].str.replace("^[ ,]+", "")
@@ -606,6 +620,7 @@ def transform_and_process(to_process_addresses, transformers, addr_key_field, st
      }
     
     return osm_results, rejected, step_stats
+
 
 
 # ## OSM 
@@ -970,7 +985,7 @@ def add_addr_out_columns(osm_results, prefix):
 
 # # Transformers
 
-# In[29]:
+# In[1]:
 
 
 def apply_transformers(addresses, transformers, addr_key_field, street_field, housenbr_field, postcode_field, 
@@ -1003,6 +1018,12 @@ def apply_transformers(addresses, transformers, addr_key_field, street_field, ho
             #transformed_addresses = transformed_addresses[transformed_addresses[housenbr_field].fillna("").str.len()>0].copy()
             transformed_addresses[housenbr_field] = ""
             transformed_addresses[street_field] = ""
+        
+        elif transformer == "nozip":
+            transformed_addresses[postcode_field] = ""
+
+        elif transformer == "nocountry":
+            transformed_addresses[country_field] = ""
 
         elif transformer == "libpostal": 
             transformed_addresses = libpostal_transformer(transformed_addresses, addr_key_field, street_field, housenbr_field, postcode_field, 
@@ -1175,7 +1196,9 @@ def photon_transformer(addresses, addr_key_field, street_field, housenbr_field, 
     t = datetime.now() 
     photon_addr = addresses[[addr_key_field, street_field, housenbr_field, postcode_field, city_field, country_field]].copy()
     
-    photon_addr["photon_full_addr"] = photon_addr[street_field].fillna("") +", "+                                 photon_addr[postcode_field].fillna("") + " " +photon_addr[city_field].fillna("")+", "+                                 photon_addr[country_field].fillna("") 
+    photon_addr["photon_full_addr"] = photon_addr[street_field].fillna("") +", "+ \
+                                photon_addr[postcode_field].fillna("") + " " +photon_addr[city_field].fillna("")+", "+ \
+                                photon_addr[country_field].fillna("") 
     
     # Send to Photon
     photon_res = process_photon(photon_addr, "photon_full_addr", "photon", addr_key_field = addr_key_field)
@@ -1243,6 +1266,7 @@ lpost_city_field     = "lpost_city"
 lpost_country_field  = "lpost_country"
 
 
+
 # In[38]:
 
 
@@ -1255,7 +1279,9 @@ def libpostal_transformer(addresses, addr_key_field, street_field, housenbr_fiel
 
     # Make full address for libpostal
     
-    libpost_addr["lpost_full_addr_in"] = libpost_addr[street_field] + " "+ libpost_addr[housenbr_field].fillna("")+", "+                    libpost_addr[postcode_field].fillna("") + " " +libpost_addr[city_field].fillna("") +",  " +                    libpost_addr[country_field].fillna("")
+    libpost_addr["lpost_full_addr_in"] = libpost_addr[street_field] + " "+ libpost_addr[housenbr_field].fillna("")+", "+\
+                    libpost_addr[postcode_field].fillna("") + " " +libpost_addr[city_field].fillna("") +",  " +\
+                    libpost_addr[country_field].fillna("")
     
     # Apply libpostal
     
@@ -1289,6 +1315,7 @@ def libpostal_transformer(addresses, addr_key_field, street_field, housenbr_fiel
     return libpost_addr[[addr_key_field] + fields_lpost].rename(columns= {field_lpost: field_in for field_in, field_lpost in fields})[[addr_key_field] + fields_out]
 
 
+
 # ## Regex transformer
 
 # In[39]:
@@ -1316,4 +1343,5 @@ def regex_transformer(addresses, addr_key_field, street_field, housenbr_field, p
             vlog("None")
 
     return regex_addr
+
 
