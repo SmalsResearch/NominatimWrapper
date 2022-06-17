@@ -8,17 +8,32 @@ More explaination is given (in French) on:
 
 It requires Nominatim, Photon and Libpostal.
 
-Nominatim should be provided separetely. 
+Nominatim might be provided separetely. 
 
-We provide a Docker file, allowing to build an image containing Photon and Libpostal, as well as our code.
+We provide a Docker file (with docker-compose), allowing to build a set of images containing Photon and Libpostal, as well as our code. It is however possible to use your own instance of Photon, but we don't give any further details here.
 
-Several configurations are possible : 
+# Build & Run
 
-1. Using our Python script, connecting to your own Photon and Libpostal instance (no further details given here)
-2. Using our Docker image, and run our batch script within the docker image 
-3. Using our Docker image, and use our REST API
+## Full build
+With this option, a scripts "full_build.sh" will build Nominatim, extract from this container the data Photon will need, and then build Libpostal, Photon and NominatimWrapper containers.
 
-## Nominatim 
+### Build
+
+- Edit docker-compose-full.yml to choose the right geographical zone (options PBF_URL and REPLICATION_URL)
+- In NominatimWrapper folder, run `./full_build.sh`
+
+### Run
+`docker-compose -f docker-compose-full.yml up`
+
+### Stop
+`docker stop nominatimwrapper_wrapper_1  nominatimwrapper_photon_1  nominatimwrapper_libpostal_1  nominatim`
+`docker rm nominatim` # otherwise next 'up' will (sometimes) fail. Why?? 
+
+## Appart Nominatim
+
+With this option, we build Nominatim in its own container, extract (manually) Photo data, and then build our Libpostal, Photon and NominatimWrapper as another group of containers using docker-compose
+
+### Build Nominatim 
 
 More info on https://hub.docker.com/r/mediagis/nominatim/
 
@@ -32,80 +47,28 @@ In one command (for belgian data):
     -v nominatim-data:/var/lib/postgresql/12/main   \
     -p 8080:8080   
     --name nominatim 
-    mediagis/nominatim:3.7`
-
-
-
-## Photon 
-
-### Using your own instance : 
-
-See https://github.com/komoot/photon/#installation 
-
-### Using our Docker
-
-Our Docker build downloads Photon code, but you need to provide Data separetely. 
-
-- To build the Elastic Search DB from the local Nominatim server: 
-    - https://github.com/komoot/photon/#customized-search-data 
-    - Should be done on the Nominatim machine! 
-    - For Belgium, photon data takes 900 MB.
-- To get the worldwide data : 
-    - https://github.com/komoot/photon/#installation 
-    - Takes ~53 Gb
-
-- Prepare the data : 
-     - Find folder where "photon_data" is
-     - `tar czf  photon.tar.gz photon_data/`
-
-- Assuming using mediagis/nominatim of above : 
-    - Get photon jar : `wget https://github.com/komoot/photon/releases/download/0.3.4/photon-0.3.4.jar`
-    - Copy it to the docker machine : `docker cp photon-0.3.4.jar nominatim:/`
-    - Enter the docker machine : `docker exec -it nominatim bash`
-    - Within the docker machine : 
-        - Add a postgresql password : 
-        ```
-            su postgres
-            psql
-            ALTER USER nominatim WITH ENCRYPTED PASSWORD 'mysecretpassword';
-            \q
-            exit
-         ```
-        - Build the Photon data: `java -jar photon-*.jar -nominatim-import -host localhost -port 5432 -database nominatim -user nominatim -password mysecretpassword -languages en,fr,nl` (might require to install Java : sudo apt update ; sudo apt install default-jre)
-        - Warning: folder "photon_data" should not exist before running this java command. Please remove it if needed.
-        - Prepare the tar.gz file : `tar czf photon.tar.gz photon_data/`
-        - `exit`
-    - Get the tar.gz file : `docker cp nominatim:photon.tar.gz .`
-    - Delete files (photon-0.3.1.jar and photon.tar.gz )
+    mediagis/nominatim:4.0`
     
-# Docker
 
-Go to the repository root folder (NominatimWrapper), and copy the file "photon.tar.gz" in "Docker" folder (see above)
+### Photon 
 
-## Build
+- Option 1: download worldwide data on https://github.com/komoot/photon/#installation. It takes ~53 Gb!!
+- Option 2: Run the "PREPARE PHOTON DATA" block of "full_build.sh" script, adapting "NOMINATIM_CNT=nominatim" as needed
 
-### Build with docker-compose (prefered version)
-Split in three containers : Photon, Libpostal, and NominatimWrapper
+Both options provide a "photon.tar.gz" which has to be put in Docker folder
+
+
+    
+### Build NominatimWrapper
 
 `docker-compose -f docker-compose.yml build`
 
-### One container
-Only one container, embedding Libpostal, Photon and NominatimWrapper 
 
-`docker build -f Docker/Dockerfile -t nominatim_wrapper --build-arg photon_data=Docker/photon.tar.gz .`
+### Run 
 
-
-## Run 
-
-Below, "nominatim_wrapper" is the name of our the docker image, "nomin_wrapper", the name of the container.
-
-Nominatim IP can be get by running : 
+In "docker-compose.yml", change "OSM_HOST=xx.xx.xx.xx:pppp" to reflect the address of the Nominatim server given by:
 
 `docker inspect nominatim |grep \"IPAd`
-
-
-### With docker-compose (prefered)
-In "docker-compose.yml", change "OSM_HOST=xx.xx.xx.xx:pppp" to reflect the address of the Nominatim server.
 
 PHOTON_HOST and LIBPOSTAL_HOST do not need to be changed
 
@@ -114,41 +77,6 @@ Then,
 `docker-compose -f docker-compose.yml up`
 
 
-### Without docker-compose
-- To keep the default parameters:   `docker run -d  --name nomin_wrapper nominatim_wrapper`
-- To change the default parameters: 
-   -  Ex 1 (using internal instances of OSM and Photon) : 
-   
-     ` docker run -d --name nomin_wrapper  -e OSM_HOST=<nominatim_host>  -e NB_WORKERS=8 -e NB_LPOST_WORKERS=2  nominatim_wrapper`
-
-   -  Ex 2 (using internal instances of OSM and your own instance of photon) : 
-   
-     ` docker run -d --name nomin_wrapper  -e OSM_HOST=<nominatim_host>  -e PHOTON_HOST=<photon_ip>:2322 -e NB_WORKERS=8 -e NB_LPOST_WORKERS=2  nominatim_wrapper`
-
-   -  Ex 2 (using public instances): 
-   
-    ` docker run -d --name nomin_wrapper  -e OSM_HOST=nominatim.openstreetmap.org -e PHOTON_HOST=photon.komoot.de -e NB_WORKERS=8 -e NB_LPOST_WORKERS=2 nominatim_wrapper`
-
-- To change port mapping : `docker run -d -p 7070:8080 -p 2322:2322 -p 5000:5000  -e OSM_HOST=172.17.0.2:8080 -e NB_WORKERS=8 nominatim_wrapper`
-
-
-## Run batch
-- Adapt file config_batch.py according to your data file
-- Copy config file and addresses within container: 
-   - `docker cp config_batch.py  nomin_wrapper:/NominatimWrapper`
-   - `docker cp address.csv.gz   nomin_wrapper:/`
-- `docker exec -it nomin_wrapper python3 /NominatimWrapper/AddressCleanserBatch.py -c config_batch -a address.csv.gz`
-- Other available options: 
-   - '-s 1000': Take a sample of 1000 records
-   - '-q': quiet (less outputs)
-   - '-v': verbose (more outputs)
-
-## Move
-
-To build the docker image on a machine with Internet access ("build machine") and the run it on another one, without internet access ("run machine") :
-- On the "build machine":  `docker save nominatim_wrapper | gzip >nominatim_wrapper.tar.gz`
-- Transfer file nominatim_wrapper.tar.gz to the "run machine"
-- On the "run machine":  `docker load < nominatim_wrapper.tar.gz`
 
 # USAGE
 
@@ -193,7 +121,7 @@ options :
     - yes: use "structured" version of Nominatim (example: https://nominatim.openstreetmap.org/search.php?street=avenue+fonsny&city=bruxelles&postalcode=1060&format=jsonv2)
     - no: use "unstructured" version of Nominatim (example: https://nominatim.openstreetmap.org/search.php?q=avenue+fonsny,+1060+bruxelles&format=jsonv2)
 - extra_house_nbr=yes|no (default: yes). Often, OSM does not know exact positioning of a building, and locates only its street. In this case, "addr_out_number" is empty. If house number contains a box, it may be removed in the output. This could be OK for geocoding, but not for data cleansing:
-    - yes: 3 extra fields are added in the input: "in_house_nbr" contains house number given in input ; "lpost_house_nbr" contains house number provided by libpostal receiving contatenation of street and house number (from input), and "lpost_unit" contains "unit" given by libpostal. If libpostal provides several "house numbers", they are joined by a ";".
+    - yes: 3 extra fields are added in the input: "in_house_nbr" contains house number given in input ; "lpost_house_nbr" contains house number provided by libpostal receiving concatenation of street and house number (from input), and "lpost_unit" contains "unit" given by libpostal. If libpostal provides several "house numbers", they are joined by a ";".
     - no: extra fields are not computed. Avoid a call to libpostal for each address, which may improve performance if this information is not needed
 
 ## Quality indicators

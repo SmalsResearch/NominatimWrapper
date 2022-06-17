@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[ ]:
+# In[1]:
 
 
 import pandas as pd
@@ -28,19 +28,19 @@ import matplotlib.pyplot as plt
 from IPython.display import display
 
 
-# In[ ]:
+# In[2]:
 
 
 import urllib3
 
 
-# In[ ]:
+# In[3]:
 
 
 http = urllib3.PoolManager()
 
 
-# In[ ]:
+# In[4]:
 
 
 from config_batch import * 
@@ -48,7 +48,7 @@ from config_batch import *
 
 # # Functions
 
-# In[ ]:
+# In[5]:
 
 
 ws_hostname = "127.0.1.1"
@@ -57,7 +57,7 @@ ws_hostname = "10.1.0.45"
 # ws_hostname = "192.168.1.3"
 
 
-# In[ ]:
+# In[6]:
 
 
 def call_ws(addr_data, check_result=True, structured_osm=False): #lg = "en,fr,nl"
@@ -72,7 +72,7 @@ def call_ws(addr_data, check_result=True, structured_osm=False): #lg = "en,fr,nl
                                      "struct_osm" : "yes" if structured_osm else "no"
                                     })
     url = f"http://{ws_hostname}:5000/search/?{params}"
-    print(url)
+#     print(url)
     try:
         with urllib.request.urlopen(url) as response:
             res = response.read()
@@ -85,7 +85,7 @@ def call_ws(addr_data, check_result=True, structured_osm=False): #lg = "en,fr,nl
     
 
 
-# In[ ]:
+# In[25]:
 
 
 def call_ws_batch(addr_data, mode="geo", with_reject=False, check_result=True, structured_osm=False): #lg = "en,fr,nl"
@@ -117,13 +117,14 @@ def call_ws_batch(addr_data, mode="geo", with_reject=False, check_result=True, s
         res = pd.DataFrame(json.loads(r.data.decode('utf-8')))
     except ValueError:
         print("Cannot decode result:")
+        print(r.data.decode('utf-8'))
         print(json.loads(r.data.decode('utf-8')))
         return 
 #     display(res)
     return res
 
 
-# In[ ]:
+# In[8]:
 
 
 def expand_json(addresses):
@@ -143,7 +144,7 @@ def expand_json(addresses):
 
 # ## Single address calls
 
-# In[ ]:
+# In[9]:
 
 
 call_ws({street_field:   "Av. Fonsny", 
@@ -177,7 +178,7 @@ call_ws({street_field:   "",
 
 # ## Batch calls (row by row)
 
-# In[ ]:
+# In[136]:
 
 
 addresses = get_addresses("address.csv.gz")
@@ -186,10 +187,10 @@ addresses = addresses.sample(1000).copy()
 
 # ### Simple way
 
-# In[ ]:
+# In[149]:
 
 
-addresses["json"] = addresses.progress_apply(call_ws, check_result=True, structured_osm=False, axis=1)
+addresses["json"] = addresses.progress_apply(call_ws, check_result=False, structured_osm=False, axis=1)
 
 
 # In[ ]:
@@ -225,9 +226,27 @@ addresses
 
 # ## Batch calls (batch WS)
 
+# In[10]:
+
+
+addresses = pd.read_csv(f"../GISAnalytics/data/geocoding/kbo_1000_sample.csv")
+addresses = addresses.rename(columns={"Unnamed: 0": addr_key_field, "address": street_field})
+addresses[city_field] = ""
+addresses[country_field] =  "Belgique"
+addresses[housenbr_field] = ""
+addresses[postcode_field]=""
+addresses
+
+
+# In[137]:
+
+
+addresses
+
+
 # ### Single block
 
-# In[ ]:
+# In[26]:
 
 
 # Only geocoding
@@ -235,7 +254,7 @@ addresses
 call_ws_batch(addresses, mode="geo", check_result=True, structured_osm=True)
 
 
-# In[ ]:
+# In[144]:
 
 
 # Geocode + address
@@ -278,11 +297,17 @@ def call_ws_batch_chunks(addr_data, mode="geo", with_reject=False, check_result=
     return df_res
 
 
-# In[ ]:
+# In[146]:
 
 
-df_res = call_ws_batch_chunks(addresses, chunk_size=100, mode="long")
+df_res = call_ws_batch_chunks(addresses, chunk_size=100, mode="short", check_result=False)
 df_res
+
+
+# In[129]:
+
+
+df_res[df_res.method=="nonum"].sort_values("postcode")
 
 
 # In[ ]:

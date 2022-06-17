@@ -5,11 +5,10 @@ ARG photon_data
 RUN yum -y update && yum -y install java-1.8.0 wget yum-utils && package-cleanup --leaves --all
 
 # Install Photon
-# TODO : try photon 0.3.2
 
 RUN mkdir /photon
 WORKDIR /photon
-RUN wget --progress=dot:mega https://github.com/komoot/photon/releases/download/0.3.4/photon-0.3.4.jar
+RUN wget --progress=dot:mega https://github.com/komoot/photon/releases/download/0.3.5/photon-0.3.5.jar
 COPY ${photon_data} photon.tar.gz
 RUN tar xzf photon.tar.gz
 RUN rm photon.tar.gz

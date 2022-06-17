@@ -159,21 +159,48 @@ vlog("Transformers:")
 vlog(transformers_sequence)
 
 
+# In[1]:
+
+
+city_test_from = "Bruxelles"
+city_test_to = ["Bruxelles", "Brussels"]
+
+
+# In[2]:
+
+
+
+
+
 # In[ ]:
 
 
 # Check that Nominatim server is running properly
-try: 
-    osm = get_osm("Bruxelles")
-    assert "Bruxelles" in osm[0]["namedetails"]["name:fr"] 
-    
-    log("OSM working properly")
-    
-    
-except Exception as e: 
-    log("OSM not up & running")
-    log(f"OSM host: {AddressCleanserUtils.osm_host}")
-    #raise e
+# Adapt with the city of your choice!
+delay=5
+for i in range(10):
+    osm = None
+    try: 
+        osm = get_osm(city_test_from)
+        assert city_test_to[0] in osm[0]["namedetails"]["name:fr"] 
+
+        log("Nominatim working properly")
+        break
+
+    except Exception as e: 
+        log("Nominatim not up & running")
+        log(f"Try again in {delay} seconds")
+        if osm is not None:
+            log("Answer:")
+            log(osm)
+        
+        log(f"Nominatim host: {AddressCleanserUtils.osm_host}")
+        
+        #raise e
+        time.sleep(delay)
+if i == 9:
+    log("Nominatim not up & running !")
+    log(f"Nominatim: {AddressCleanserUtils.osm_host}")
 
 
 # In[ ]:
@@ -182,17 +209,20 @@ except Exception as e:
 # Check that Libpostal is running properly
 delay=5
 for i in range(10):
-
+    lpost=None
     try: 
-        lpost = parse_address("Bruxelles")
-        assert lpost[0][0] == "bruxelles"
+        lpost = parse_address(city_test_from)
+        assert lpost[0][0].lower() == city_test_to[0].lower()
         log("Libpostal working properly")
         break
         
     except Exception as e: 
         log("Libpostal not up & running ")
-        
         log(f"Try again in {delay} seconds")
+        if lpost is not None:
+            log("Answer:")
+            log(lpost)
+            
         time.sleep(delay)
     #raise e
 if i == 9:
@@ -210,7 +240,7 @@ for i in range(10):
     try:
         ph=""
         ph = get_photon("Bruxelles")
-        assert "Brussels" in ph["features"][0]["properties"]["name"] or "Bruxelles" in ph["features"][0]["properties"]["name"] 
+        assert city_test_to[0] in ph["features"][0]["properties"]["name"] or city_test_to[1] in ph["features"][0]["properties"]["name"] 
         log("Photon working properly")
         break
 
@@ -407,7 +437,7 @@ def remove_empty_values(dct_lst):
     return [{k: v for k, v in item.items() if not pd.isnull(v) and v != ""} for item in dct_lst]
 
 
-# In[ ]:
+# In[5]:
 
 
 # Call to this : curl -F media=@address_sample100.csv http://127.0.0.1:5000/batch/ -X POST -F mode=long
@@ -465,7 +495,7 @@ def batch():
     mandatory_fields = [street_field, housenbr_field , postcode_field , city_field, country_field, addr_key_field]
     for field in mandatory_fields:
         if field not in df: 
-            return f"Field '{field} mandatory in file. All mandatory fields are {mandatory_fields}\n"
+            return f"[{{\"error\": \"Field \'{field}\' mandatory in file. All mandatory fields are {';'.join(mandatory_fields)}\"}}]"
     
     res, rejected_addresses = process_addresses(df,
                                                 check_results=check_results, 
