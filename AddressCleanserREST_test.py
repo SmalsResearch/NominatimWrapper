@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[48]:
+# In[1]:
 
 
 import pandas as pd
@@ -28,19 +28,19 @@ import matplotlib.pyplot as plt
 from IPython.display import display
 
 
-# In[41]:
+# In[2]:
 
 
 import urllib3
 
 
-# In[42]:
+# In[3]:
 
 
 http = urllib3.PoolManager()
 
 
-# In[43]:
+# In[4]:
 
 
 from config_batch import * 
@@ -48,7 +48,7 @@ from config_batch import *
 
 # # Functions
 
-# In[44]:
+# In[5]:
 
 
 ws_hostname = "127.0.1.1"
@@ -57,7 +57,7 @@ ws_hostname = "10.1.0.45"
 # ws_hostname = "192.168.1.3"
 
 
-# In[45]:
+# In[6]:
 
 
 def call_ws(addr_data, check_result=True, structured_osm=False): #lg = "en,fr,nl"
@@ -72,7 +72,7 @@ def call_ws(addr_data, check_result=True, structured_osm=False): #lg = "en,fr,nl
                                      "struct_osm" : "yes" if structured_osm else "no"
                                     })
     url = f"http://{ws_hostname}:5000/search/?{params}"
-    print(url)
+#     print(url)
     try:
         with urllib.request.urlopen(url) as response:
             res = response.read()
@@ -85,7 +85,7 @@ def call_ws(addr_data, check_result=True, structured_osm=False): #lg = "en,fr,nl
     
 
 
-# In[16]:
+# In[25]:
 
 
 def call_ws_batch(addr_data, mode="geo", with_reject=False, check_result=True, structured_osm=False): #lg = "en,fr,nl"
@@ -109,20 +109,22 @@ def call_ws_batch(addr_data, mode="geo", with_reject=False, check_result=True, s
         'mode': mode,
         "with_rejected" : "yes" if with_reject else "no",
         "check_result" : "yes" if check_result else "no",
-        "struct_osm" : "yes" if structured_osm else "no"
+        "struct_osm" : "yes" if structured_osm else "no",
+        #"extra_house_nbr": "no"
     })
     
     try:
         res = pd.DataFrame(json.loads(r.data.decode('utf-8')))
     except ValueError:
         print("Cannot decode result:")
+        print(r.data.decode('utf-8'))
         print(json.loads(r.data.decode('utf-8')))
         return 
 #     display(res)
     return res
 
 
-# In[46]:
+# In[8]:
 
 
 def expand_json(addresses):
@@ -142,17 +144,17 @@ def expand_json(addresses):
 
 # ## Single address calls
 
-# In[49]:
+# In[9]:
 
 
 call_ws({street_field:   "Av. Fonsny", 
-         housenbr_field: "20",
+         housenbr_field: "20 bus 22",
          city_field:     "Saint-Gilles",
          postcode_field: "1060",
          country_field:  "Belgium"}, check_result=True, structured_osm=False)
 
 
-# In[21]:
+# In[ ]:
 
 
 call_ws({street_field:   "", 
@@ -162,46 +164,44 @@ call_ws({street_field:   "",
          country_field:  "Belgium"}, check_result=True, structured_osm=True)
 
 
-# In[11]:
+# In[ ]:
 
 
-call_ws({street_field:   "Fechtergasse", 
-         housenbr_field: "16/13",
-         city_field:     "Wenen",
-         postcode_field: "1090",
-         country_field:  "Oostenrijk"}, check_result=False, structured_osm=False)
 
 
-# In[12]:
+
+# In[ ]:
 
 
-call_ws({street_field:   "Fechtergasse 16/13 1090 Wenen", 
-         housenbr_field: "",
-         city_field:     "",
-         postcode_field: "",
-         country_field:  "Oostenrijk"}, check_result=False, structured_osm=False)
+
 
 
 # ## Batch calls (row by row)
 
-# In[38]:
+# In[136]:
 
 
 addresses = get_addresses("address.csv.gz")
-addresses = addresses.sample(100).copy()
+addresses = addresses.sample(1000).copy()
 
 
 # ### Simple way
 
-# In[74]:
+# In[149]:
 
 
-addresses["json"] = addresses.progress_apply(call_ws, check_result=True, structured_osm=False, axis=1)
+addresses["json"] = addresses.progress_apply(call_ws, check_result=False, structured_osm=False, axis=1)
+
+
+# In[ ]:
+
+
+# addresses
 
 
 # ### Using Dask
 
-# In[17]:
+# In[ ]:
 
 
 dd_addresses = dd.from_pandas(addresses, npartitions=4)
@@ -212,13 +212,13 @@ with ProgressBar():
     addresses["json"] = dask_task.compute()
 
 
-# In[26]:
+# In[ ]:
 
 
 expand_json(addresses)
 
 
-# In[27]:
+# In[ ]:
 
 
 addresses
@@ -226,9 +226,27 @@ addresses
 
 # ## Batch calls (batch WS)
 
+# In[10]:
+
+
+addresses = pd.read_csv(f"../GISAnalytics/data/geocoding/kbo_1000_sample.csv")
+addresses = addresses.rename(columns={"Unnamed: 0": addr_key_field, "address": street_field})
+addresses[city_field] = ""
+addresses[country_field] =  "Belgique"
+addresses[housenbr_field] = ""
+addresses[postcode_field]=""
+addresses
+
+
+# In[137]:
+
+
+addresses
+
+
 # ### Single block
 
-# In[39]:
+# In[26]:
 
 
 # Only geocoding
@@ -236,23 +254,35 @@ addresses
 call_ws_batch(addresses, mode="geo", check_result=True, structured_osm=True)
 
 
-# In[62]:
+# In[144]:
 
 
 # Geocode + address
 call_ws_batch(addresses, mode="short") 
 
 
-# In[63]:
+# In[ ]:
 
 
 # Geocode + address, with rejected addresses
-call_ws_batch(addresses, mode="long", with_reject=True) 
+call_ws_batch(addresses, mode="long", with_reject=True)
+
+
+# In[ ]:
+
+
+# call_ws_batch(addresses[addresses.EntityNumber.str.startswith("0554.81")], mode="long", with_reject=True)
+
+
+# In[ ]:
+
+
+# a[a.in_house_nbr.str.upper() != a.lpost_house_nbr.str.upper()]
 
 
 # ### Batch blocs
 
-# In[21]:
+# In[ ]:
 
 
 def call_ws_batch_chunks(addr_data, mode="geo", with_reject=False, check_result=True, structured_osm=False, chunk_size=100): 
@@ -267,14 +297,32 @@ def call_ws_batch_chunks(addr_data, mode="geo", with_reject=False, check_result=
     return df_res
 
 
-# In[ ]:
+# In[146]:
 
 
-df_res = call_ws_batch_chunks(addresses, chunk_size=10)
+df_res = call_ws_batch_chunks(addresses, chunk_size=100, mode="short", check_result=False)
 df_res
 
 
-# In[1]:
+# In[129]:
+
+
+df_res[df_res.method=="nonum"].sort_values("postcode")
+
+
+# In[ ]:
+
+
+df_res[df_res.in_house_nbr.str.upper() != df_res.lpost_house_nbr.str.upper()]
+
+
+# In[ ]:
+
+
+# df_res[df_res.addr_out_number.str.upper() != df_res.lpost_house_nbr.str.upper()]
+
+
+# In[ ]:
 
 
 df_res.method.value_counts()
@@ -282,7 +330,7 @@ df_res.method.value_counts()
 
 # ## Comparing options
 
-# In[19]:
+# In[ ]:
 
 
 addresses = get_addresses("address.csv.gz")
@@ -290,7 +338,7 @@ addresses = addresses[addresses[country_field] == "Belgique"]
 addresses = addresses.sample(10000).copy()
 
 
-# In[22]:
+# In[ ]:
 
 
 results = {}
@@ -311,7 +359,7 @@ print("Iterations per seconds:")
 it_per_seconds
 
 
-# In[23]:
+# In[ ]:
 
 
 print("Match rate")
@@ -319,7 +367,7 @@ pd.DataFrame({k1: {k2: results[(k1,k2)].shape[0]/addresses.shape[0] for k2 in ["
                   for k1 in  ["check","nocheck"]})
 
 
-# In[24]:
+# In[ ]:
 
 
 print("Match rate (without nostreet)")
@@ -327,7 +375,7 @@ pd.DataFrame({k1: {k2: results[(k1,k2)].query("method!='nostreet'").shape[0]/add
                   for k1 in  ["check","nocheck"]})
 
 
-# In[25]:
+# In[ ]:
 
 
 print("Unmatched addresses")
@@ -338,7 +386,7 @@ for k1 in results:
     print(nomatch[country_field].value_counts())
 
 
-# In[26]:
+# In[ ]:
 
 
 vc_values = pd.DataFrame(columns=results.keys(), index=results.keys())
@@ -395,7 +443,7 @@ for k1 in results:
 # display(vc_values.fillna(""))
 
 
-# In[27]:
+# In[ ]:
 
 
 print("Common in both (disagree on place_id - disagree on values - disagree on values, ignoring number) / results only for row / results only for columns")

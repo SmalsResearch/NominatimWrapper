@@ -1,5 +1,25 @@
 version: "3"
 services:
+  nominatim:
+    container_name: nominatim
+    image: mediagis/nominatim:4.0
+    restart: always
+    ports:
+        - "8080:8080"
+    environment:
+            # see https://github.com/mediagis/nominatim-docker/tree/master/3.7#configuration for more options
+#          PBF_URL: https://download.geofabrik.de/europe/monaco-latest.osm.pbf
+#          REPLICATION_URL: https://download.geofabrik.de/europe/monaco-updates/
+         PBF_URL: https://download.geofabrik.de/europe/belgium-latest.osm.pbf
+         REPLICATION_URL: https://download.geofabrik.de/europe/belgium-updates/
+         NOMINATIM_PASSWORD: very_secure_password_1234 
+         IMPORT_WIKIPEDIA: "true"
+         IMPORT_STYLE: address
+    volumes:
+         - nominatim-data:/var/lib/postgresql/12/main
+    shm_size: 1gb
+
+    
   photon:
     build: 
         context: .
@@ -31,8 +51,8 @@ services:
       - NB_WORKERS:4
       - PHOTON_HOST=photon:2322
       - LPOST_HOST=libpostal:7000
-      - OSM_HOST=10.1.0.45:8080 #172.17.0.2:8080 #172.17.0.2:8080  #10.1.0.45:7070
-      - LOG_LEVEL=low
+      - OSM_HOST=nominatim:8080
+      - LOG_LEVEL=medium
 #       - TRANSFORMERS=[ ["orig"],
 #                           ["regex[init]"],
 #                           ["nonum"],
@@ -45,4 +65,7 @@ services:
 #                           ["libpostal", "nostreet"], 
 #                           ["nostreet"]
 #                         ]
-      
+
+volumes:
+    nominatim-data:
+    

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
+# In[ ]:
 
 
 from flask import Flask,  request,jsonify
@@ -26,7 +26,7 @@ from datetime import datetime, timedelta
 import time
 
 
-# In[2]:
+# In[ ]:
 
 
 import config_REST
@@ -34,7 +34,7 @@ reload(config_REST)
 from config_REST import *
 
 
-# In[3]:
+# In[ ]:
 
 
 # TO RUN : 
@@ -45,13 +45,13 @@ from config_REST import *
 # gunicorn -w 8 -b 127.0.0.1:5000 wsgi:app
 
 
-# In[4]:
+# In[ ]:
 
 
 # !jupyter nbconvert --to python AddressCleanserREST.ipynb
 
 
-# In[5]:
+# In[ ]:
 
 
 # AddressCleanserUtils.pbar.unregister()
@@ -66,7 +66,8 @@ AddressCleanserUtils.regex_replacements = regex_replacements
 AddressCleanserUtils.use_osm_parent = use_osm_parent 
 
 
-# In[6]:
+
+# In[ ]:
 
 
 import logging, os
@@ -90,7 +91,8 @@ else :
 
 
 
-# In[7]:
+
+# In[ ]:
 
 
 def get_init_df(data):
@@ -103,14 +105,16 @@ def get_init_df(data):
                           }])
 
 
-# In[8]:
+
+# In[ ]:
 
 
 def get_row_dict(row, orig=False):
     if orig: 
         return row["osm_item_result"]
     else: 
-        to_copy_field = ["osm_id", "place_id", "lat","lon","display_name", "place_rank", "method", "extra_house_nbr", "reject_reason", "osm_addr_in"] + list(collapse_params.keys())  + list(filter(lambda x: x.startswith("SIM"), row.index))
+        to_copy_field = ["osm_id", "place_id", "lat","lon","display_name", "place_rank", "method", 
+                         "extra_house_nbr", "in_house_nbr", "lpost_house_nbr", "lpost_unit", "reject_reason", "osm_addr_in"] + list(collapse_params.keys())  + list(filter(lambda x: x.startswith("SIM"), row.index))
         res =  {}
 
         for f in to_copy_field:
@@ -120,7 +124,7 @@ def get_row_dict(row, orig=False):
         return res
 
 
-# In[9]:
+# In[ ]:
 
 
 def format_res(res):
@@ -158,21 +162,48 @@ vlog("Transformers:")
 vlog(transformers_sequence)
 
 
+# In[1]:
+
+
+city_test_from = "Bruxelles"
+city_test_to = ["Bruxelles", "Brussels"]
+
+
+# In[2]:
+
+
+
+
+
 # In[ ]:
 
 
 # Check that Nominatim server is running properly
-try: 
-    osm = get_osm("Bruxelles")
-    assert "Bruxelles" in osm[0]["namedetails"]["name:fr"] 
-    
-    log("OSM working properly")
-    
-    
-except Exception as e: 
-    log("OSM not up & running")
-    log(f"OSM host: {AddressCleanserUtils.osm_host}")
-    #raise e
+# Adapt with the city of your choice!
+delay=5
+for i in range(10):
+    osm = None
+    try: 
+        osm = get_osm(city_test_from)
+        assert city_test_to[0] in osm[0]["namedetails"]["name:fr"] 
+
+        log("Nominatim working properly")
+        break
+
+    except Exception as e: 
+        log("Nominatim not up & running")
+        log(f"Try again in {delay} seconds")
+        if osm is not None:
+            log("Answer:")
+            log(osm)
+        
+        log(f"Nominatim host: {AddressCleanserUtils.osm_host}")
+        
+        #raise e
+        time.sleep(delay)
+if i == 9:
+    log("Nominatim not up & running !")
+    log(f"Nominatim: {AddressCleanserUtils.osm_host}")
 
 
 # In[ ]:
@@ -181,17 +212,20 @@ except Exception as e:
 # Check that Libpostal is running properly
 delay=5
 for i in range(10):
-
+    lpost=None
     try: 
-        lpost = parse_address("Bruxelles")
-        assert lpost[0][0] == "bruxelles"
+        lpost = parse_address(city_test_from)
+        assert lpost[0][0].lower() == city_test_to[0].lower()
         log("Libpostal working properly")
         break
         
     except Exception as e: 
         log("Libpostal not up & running ")
-        
         log(f"Try again in {delay} seconds")
+        if lpost is not None:
+            log("Answer:")
+            log(lpost)
+            
         time.sleep(delay)
     #raise e
 if i == 9:
@@ -206,9 +240,10 @@ if i == 9:
 # Check that Photon server is running properly
 delay=5
 for i in range(10):
-    try: 
+    try:
+        ph=""
         ph = get_photon("Bruxelles")
-        assert "Brussels" in ph["features"][0]["properties"]["name"]
+        assert city_test_to[0] in ph["features"][0]["properties"]["name"] or city_test_to[1] in ph["features"][0]["properties"]["name"] 
         log("Photon working properly")
         break
 
@@ -216,6 +251,7 @@ for i in range(10):
     except Exception as e: 
         log("Photon not up & running ")
         log(f"Try again in {delay} seconds")
+        log(ph)
         time.sleep(delay)
         
         #raise e
@@ -224,17 +260,16 @@ if i == 9:
         log(f"Photon host: {AddressCleanserUtils.photon_host}")
 
 
-# In[2]:
+# In[ ]:
 
 
 
 
 
-# In[10]:
+# In[ ]:
 
 
-
-def process_address(data, check_results=True, osm_structured=False):
+def process_address(data, check_results=True, osm_structured=False, with_extra_house_number=True):
     vlog(f"Will process {data}")
     to_process_addresses = get_init_df(data)
     
@@ -262,17 +297,20 @@ def process_address(data, check_results=True, osm_structured=False):
         
         vlog(step_stats)
         if osm_results.shape[0] > 0:
-            osm_results = add_extra_house_number(osm_results, to_process_addresses, street_field=street_field, housenbr_field=housenbr_field)
+            if with_extra_house_number :
+                osm_results = add_extra_house_number(osm_results, to_process_addresses, 
+                                                     street_field=street_field, housenbr_field=housenbr_field,
+                                                     postcode_field=postcode_field, city_field=city_field)
             
             return {"match": format_res(osm_results), "rejected": format_res(all_reject)}
     
     return {"rejected": format_res(all_reject)}
 
 
-# In[12]:
+# In[ ]:
 
 
-def process_addresses(to_process_addresses, check_results=True, osm_structured=False):
+def process_addresses(to_process_addresses, check_results=True, osm_structured=False, with_extra_house_number=True):
     
     all_reject = pd.DataFrame()
     osm_addresses        = pd.DataFrame()
@@ -313,8 +351,10 @@ def process_addresses(to_process_addresses, check_results=True, osm_structured=F
             
         
         vlog(step_stats)
-    if osm_addresses.shape[0] > 0:
-        osm_addresses = add_extra_house_number(osm_addresses, to_process_addresses, street_field=street_field, housenbr_field=housenbr_field)
+    if with_extra_house_number and osm_addresses.shape[0] > 0:
+        osm_addresses = add_extra_house_number(osm_addresses, to_process_addresses, 
+                                               street_field=street_field, housenbr_field=housenbr_field,
+                                               postcode_field=postcode_field, city_field=city_field)
           
     log(osm_addresses.method.value_counts())
     return osm_addresses, rejected_addresses #{"match": format_res(osm_results), "rejected": format_res(all_reject)}
@@ -322,7 +362,7 @@ def process_addresses(to_process_addresses, check_results=True, osm_structured=F
 #     return pd.DataFrame()
 
 
-# In[13]:
+# In[ ]:
 
 
 def get_arg(argname, def_val):
@@ -365,7 +405,19 @@ def search():
         osm_structured = True
         log("Will call structured OSM")
     
-    res = process_address(data, check_results, osm_structured)
+    if get_arg("extra_house_nbr", "yes") == "no":
+        with_extra_house_number = False
+        vlog("Will skip extra house nbr")
+    else:
+        with_extra_house_number = True
+        vlog("Will do extra house nbr")
+    
+    
+    
+    res = process_address(data,
+                          check_results=check_results, 
+                          osm_structured=osm_structured, 
+                          with_extra_house_number= with_extra_house_number)
     log(f"Input: {data}")
     log(f"Result: {res}")
     log(f"no_reject: {no_reject}")
@@ -379,8 +431,6 @@ def search():
     return jsonify(res)
 
 
-
-
 # In[ ]:
 
 
@@ -389,7 +439,7 @@ def remove_empty_values(dct_lst):
     return [{k: v for k, v in item.items() if not pd.isnull(v) and v != ""} for item in dct_lst]
 
 
-# In[1]:
+# In[5]:
 
 
 # Call to this : curl -F media=@address_sample100.csv http://127.0.0.1:5000/batch/ -X POST -F mode=long
@@ -428,7 +478,14 @@ def batch():
         osm_structured = True
         log("Will call structured OSM")
 
-
+    if get_arg("extra_house_nbr", "yes") == "no":
+        with_extra_house_number = False
+        vlog("Will skip extra house nbr")
+    else:
+        with_extra_house_number = True
+        vlog("Will do extra house nbr")
+    
+        
         
     key_name = (list(request.files.keys())[0])
     
@@ -440,9 +497,12 @@ def batch():
     mandatory_fields = [street_field, housenbr_field , postcode_field , city_field, country_field, addr_key_field]
     for field in mandatory_fields:
         if field not in df: 
-            return f"Field '{field} mandatory in file. All mandatory fields are {mandatory_fields}\n"
+            return f"[{{\"error\": \"Field \'{field}\' mandatory in file. All mandatory fields are {';'.join(mandatory_fields)}\"}}]"
     
-    res, rejected_addresses = process_addresses(df, check_results, osm_structured)
+    res, rejected_addresses = process_addresses(df,
+                                                check_results=check_results, 
+                                                osm_structured=osm_structured,
+                                                with_extra_house_number= with_extra_house_number)
     
     
     if type(res) == dict :
@@ -458,7 +518,7 @@ def batch():
         elif mode == "short":
             res = df.merge(res)[[addr_key_field,
                        "lat", "lon", "place_rank", "method", "place_id",
-                       "addr_out_street", "addr_out_number", "extra_house_nbr", "addr_out_postcode", "addr_out_city",   "addr_out_country" ]]
+                       "addr_out_street", "addr_out_number", "in_house_nbr", "lpost_house_nbr", "lpost_unit", "addr_out_postcode", "addr_out_city",   "addr_out_country" ]]
         elif mode == "long":
             res = df.merge(res)
             
@@ -480,13 +540,13 @@ def batch():
     #request.files:
 
 
-# In[15]:
+# In[ ]:
 
 
 #! jupyter nbconvert --to python AddressCleanserREST.ipynb
 
 
-# In[23]:
+# In[ ]:
 
 
 
