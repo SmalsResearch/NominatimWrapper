@@ -1,6 +1,7 @@
 #!/bin/bash
 
 NOMINATIM_CNT=nominatim
+date
 echo "#####################"
 echo "## BUILD NOMINATIM ##"
 echo "#####################"
@@ -11,15 +12,18 @@ docker-compose -f docker-compose-full.yml up -d $NOMINATIM_CNT
 # Wait for container to be ready
 (docker logs $NOMINATIM_CNT -f 2>&1 & ) | grep -q "database system is ready to accept connections"
 
+docker ps 
 
+date
 echo "#########################"
 echo "## PREPARE PHOTON DATA ##"
 echo "#########################"
 
 
-wget https://github.com/komoot/photon/releases/download/0.3.5/photon-0.3.5.jar
+wget --progress=dot:mega https://github.com/komoot/photon/releases/download/0.3.5/photon-0.3.5.jar
 
 docker cp photon-0.3.5.jar $NOMINATIM_CNT:/
+rm photon-0.3.5.jar
 
 # Set Postgres password
 docker exec -it $NOMINATIM_CNT su postgres -c "psql -c \"ALTER USER nominatim WITH ENCRYPTED PASSWORD 'mysecretpassword'\" "
@@ -45,6 +49,7 @@ docker exec -it $NOMINATIM_CNT rm -rf /photon.tar.gz /photon-0.3.5.jar photon_da
 docker stop $NOMINATIM_CNT
 docker rm $NOMINATIM_CNT # Otherwise next "up" fails (why ???)
 
+date
 echo "############################"
 echo "## BUILD NOMINATIMWRAPPER ##"
 echo "############################"

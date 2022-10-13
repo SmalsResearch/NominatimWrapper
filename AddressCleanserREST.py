@@ -66,7 +66,6 @@ AddressCleanserUtils.regex_replacements = regex_replacements
 AddressCleanserUtils.use_osm_parent = use_osm_parent 
 
 
-
 # In[ ]:
 
 
@@ -91,7 +90,6 @@ else :
 
 
 
-
 # In[ ]:
 
 
@@ -103,7 +101,6 @@ def get_init_df(data):
                           city_field:     data["city"],
                           country_field:  data["country"]
                           }])
-
 
 
 # In[ ]:
@@ -269,6 +266,7 @@ if i == 9:
 # In[ ]:
 
 
+
 def process_address(data, check_results=True, osm_structured=False, with_extra_house_number=True):
     vlog(f"Will process {data}")
     to_process_addresses = get_init_df(data)
@@ -356,7 +354,7 @@ def process_addresses(to_process_addresses, check_results=True, osm_structured=F
                                                street_field=street_field, housenbr_field=housenbr_field,
                                                postcode_field=postcode_field, city_field=city_field)
           
-    log(osm_addresses.method.value_counts())
+    #log(osm_addresses.method.value_counts())
     return osm_addresses, rejected_addresses #{"match": format_res(osm_results), "rejected": format_res(all_reject)}
     
 #     return pd.DataFrame()
