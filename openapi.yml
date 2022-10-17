@@ -36,7 +36,16 @@ paths:
             content:
               application/json:
                 schema: 
-                  $ref: '#/components/schemas/address'
+                  type: object
+                  properties:
+                    match:
+                      type: array
+                      items:
+                        $ref: '#/components/schemas/address'
+                    rejected:
+                      type: array
+                      items:
+                        $ref: '#/components/schemas/address'
 
   /batch/:
       post:
@@ -49,7 +58,8 @@ paths:
                   media:
                     type: string
                     format: binary
-                description: "csv file containing the addresses to geocode."
+                    title: addresses.csv
+                    description: "csv file containing the addresses to geocode."
           
         responses:
           "200":
@@ -59,18 +69,59 @@ paths:
                 schema: 
                   type: array
                   items:
-                    $ref: '#/components/schemas/address'
+                    $ref: '#/components/schemas/batch_address'
 components:
   schemas:
+    batch_address:
+      type: object
+      description: Address returned with a batch call
+      properties:
+        "addr_key":
+          type: number
+          example: 1
+        "lat":
+          type: number
+          example: 50.8161217
+        "lon":
+          type: number
+          example: 4.4313059
+        "place_rank":
+          type: number
+          example: 30
+        "method":
+          type: string
+          example: "orig"
+        "place_id":
+          type: number
+          example: 139737
+        "addr_out_street": 
+          type: string
+          example: "Chaussée de Tervueren - Tervuursesteenweg"
+        addr_out_number:
+          type: number
+          example: 10
+        "in_house_nbr":
+          type: number
+          example: 10
+        "lpost_house_nbr":
+          type: number
+          example: 10
+        "lpost_unit":
+          type: string
+          example: ""
+        "addr_out_postcode":
+          type: number
+          example: 1160
+        "addr_out_city":
+          type: string
+          example: "Auderghem - Oudergem"
+        "addr_out_country": 
+          type: string
+          example: "België / Belgique / Belgien"
+        
     address: 
       type: object
       description: Representation of an address
-      required:
-      - ssin
-      - yearMonth
-      - status
-      - daySituations
-      - firstConfirmationDate
       properties:
         SIM_city:
           type: number
@@ -87,7 +138,7 @@ components:
         SIM_zip:
           type: number
           example: 1
-        addr_out_city":
+        addr_out_city:
           type: string
           example: "Auderghem - Oudergem"
         addr_out_country:
@@ -132,4 +183,3 @@ components:
         place_rank:
           type: number
           example: 30
-
