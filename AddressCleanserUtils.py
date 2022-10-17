@@ -1001,7 +1001,9 @@ def apply_transformers(addresses, transformers, addr_key_field, street_field, ho
             gr = re.match(r"regex\[([a-z]+)\]", transformer)
             regex_key = gr.groups(0)[0]
             
-            transformed_addresses =  regex_transformer(transformed_addresses, addr_key_field, street_field, housenbr_field, postcode_field, city_field, country_field)
+            transformed_addresses =  regex_transformer(transformed_addresses, addr_key_field, street_field, 
+                                                       housenbr_field, postcode_field, city_field, country_field,
+                                                       regex_key = regex_key)
             
         elif transformer == "nonum":
             #transformed_addresses = transformed_addresses[transformed_addresses[housenbr_field].fillna("").str.len()>0].copy()
