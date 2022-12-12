@@ -1,6 +1,5 @@
 use_osm_parent = True
 
-with_timing_info = False
 
 street_field  = "street"
 housenbr_field = "housenumber"

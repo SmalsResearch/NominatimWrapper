@@ -52,12 +52,12 @@ from config_batch import *
 
 
 ws_hostname = "127.0.1.1"
-ws_hostname = "10.1.0.45"
+ws_hostname = "172.27.0.64"
 
 # ws_hostname = "192.168.1.3"
 
 
-# In[6]:
+# In[83]:
 
 
 def call_ws(addr_data, check_result=True, structured_osm=False): #lg = "en,fr,nl"
@@ -72,20 +72,50 @@ def call_ws(addr_data, check_result=True, structured_osm=False): #lg = "en,fr,nl
                                      "struct_osm" : "yes" if structured_osm else "no"
                                     })
     url = f"http://{ws_hostname}:5000/search/?{params}"
+    
 #     print(url)
     try:
         with urllib.request.urlopen(url) as response:
             res = response.read()
             res = json.loads(res)
 #             print(res)
-            res["time"] = datetime.now() - t
+            res["time"] = (datetime.now() - t).total_seconds()
             return res
     except Exception as e:
         return str(e)
     
 
 
-# In[25]:
+# In[189]:
+
+
+def call_ws_test(addr_data, check_result=True, structured_osm=False): #lg = "en,fr,nl"
+    t = datetime.now()
+    
+    params = urllib.parse.urlencode({"street": addr_data[street_field],
+                                     "housenumber": addr_data[housenbr_field],
+                                     "city": addr_data[city_field],
+                                     "postcode": addr_data[postcode_field],
+                                     "country": addr_data[country_field],
+                                     "check_result" : "yes" if check_result else "no",
+                                     "struct_osm" : "yes" if structured_osm else "no"
+                                    })
+    url = f"http://{ws_hostname}:5000/search_async/?{params}"
+    
+#     print(url)
+    try:
+        with urllib.request.urlopen(url) as response:
+            res = response.read()
+            res = json.loads(res)
+#             print(res)
+            res["time"] = (datetime.now() - t).total_seconds()
+            return res
+    except Exception as e:
+        return str(e)
+    
+
+
+# In[64]:
 
 
 def call_ws_batch(addr_data, mode="geo", with_reject=False, check_result=True, structured_osm=False): #lg = "en,fr,nl"
@@ -124,7 +154,7 @@ def call_ws_batch(addr_data, mode="geo", with_reject=False, check_result=True, s
     return res
 
 
-# In[8]:
+# In[9]:
 
 
 def expand_json(addresses):
@@ -144,17 +174,20 @@ def expand_json(addresses):
 
 # ## Single address calls
 
-# In[9]:
+# In[229]:
 
 
-call_ws({street_field:   "Av. Fonsny", 
-         housenbr_field: "20 bus 22",
-         city_field:     "Saint-Gilles",
-         postcode_field: "1060",
-         country_field:  "Belgium"}, check_result=True, structured_osm=False)
+res=call_ws({street_field:   "Av. Fonsny",          housenbr_field: "20",         city_field:     "Saint-Gilles",         postcode_field: "1060",         country_field:  "Belgium"}, check_result=False, structured_osm=False)
+res
 
 
-# In[ ]:
+# In[69]:
+
+
+sum(res["timing"].values())
+
+
+# In[225]:
 
 
 call_ws({street_field:   "", 
@@ -178,35 +211,55 @@ call_ws({street_field:   "",
 
 # ## Batch calls (row by row)
 
-# In[136]:
+# In[223]:
 
 
 addresses = get_addresses("address.csv.gz")
-addresses = addresses.sample(1000).copy()
+# addresses = addresses.sample(10000, replace=True).copy()
+addresses
 
 
+# 
 # ### Simple way
 
-# In[149]:
+# In[230]:
 
 
 addresses["json"] = addresses.progress_apply(call_ws, check_result=False, structured_osm=False, axis=1)
+# 5.14, 4.83 it/s
+# 2.08 8.92
 
 
-# In[ ]:
+# In[52]:
 
 
-# addresses
+addresses.iloc[5].json
+
+
+# In[53]:
+
+
+sum(addresses.iloc[5].json["timing"].values())
+
+
+# In[260]:
+
+
+call_ws({street_field: "Rue Mouligneaux", 
+         housenbr_field: 14, 
+         postcode_field: 7120, 
+         city_field:  "Estinnes", 
+         country_field: "Belgique"})
 
 
 # ### Using Dask
 
-# In[ ]:
+# In[258]:
 
 
-dd_addresses = dd.from_pandas(addresses, npartitions=4)
+dd_addresses = dd.from_pandas(addresses, npartitions=8)
 
-dask_task = dd_addresses.apply(call_ws, meta=('x', 'str'), axis=1)
+dask_task = dd_addresses.apply(call_ws, check_result=False, meta=('x', 'str'), axis=1)
 
 with ProgressBar(): 
     addresses["json"] = dask_task.compute()
@@ -215,18 +268,30 @@ with ProgressBar():
 # In[ ]:
 
 
-expand_json(addresses)
+# 1000, 1 worker: 4m18
+# 4 workers, npart=4 : 1m20
+# 8 workers, npart=4 : 1m20
+# 8 workers, npart=8 : 44s
+
+# with checker=False:
+# 8 workers, npart=8 : 24s
 
 
 # In[ ]:
 
 
-addresses
+expand_json(addresses)
+
+
+# In[241]:
+
+
+addresses.json.loc[550]
 
 
 # ## Batch calls (batch WS)
 
-# In[10]:
+# In[28]:
 
 
 addresses = pd.read_csv(f"../GISAnalytics/data/geocoding/kbo_1000_sample.csv")
@@ -238,7 +303,7 @@ addresses[postcode_field]=""
 addresses
 
 
-# In[137]:
+# In[187]:
 
 
 addresses
@@ -246,19 +311,25 @@ addresses
 
 # ### Single block
 
-# In[26]:
+# In[248]:
 
 
 # Only geocoding
 # addresses["StreetFR"] = ""
-call_ws_batch(addresses, mode="geo", check_result=True, structured_osm=True)
+call_ws_batch(addresses[[addr_key_field, street_field, housenbr_field, postcode_field, city_field, country_field]], mode="geo", check_result=False, structured_osm=True)
 
 
-# In[144]:
+# In[ ]:
+
+
+
+
+
+# In[249]:
 
 
 # Geocode + address
-call_ws_batch(addresses, mode="short") 
+call_ws_batch(addresses[[addr_key_field, street_field, housenbr_field, postcode_field, city_field, country_field]], mode="short", check_result=False) 
 
 
 # In[ ]:
@@ -282,7 +353,7 @@ call_ws_batch(addresses, mode="long", with_reject=True)
 
 # ### Batch blocs
 
-# In[ ]:
+# In[250]:
 
 
 def call_ws_batch_chunks(addr_data, mode="geo", with_reject=False, check_result=True, structured_osm=False, chunk_size=100): 
@@ -297,7 +368,7 @@ def call_ws_batch_chunks(addr_data, mode="geo", with_reject=False, check_result=
     return df_res
 
 
-# In[146]:
+# In[251]:
 
 
 df_res = call_ws_batch_chunks(addresses, chunk_size=100, mode="short", check_result=False)
@@ -450,8 +521,106 @@ print("Common in both (disagree on place_id - disagree on values - disagree on v
 vc_values.fillna("")
 
 
-# In[ ]:
+# # tests
+
+# In[34]:
 
 
+osm_host ="172.27.0.64:8080"
+def get_osm(addr, accept_language = ""): #lg = "en,fr,nl"
+    params = urllib.parse.urlencode({"q": addr,
+                                    "format":"jsonv2",
+                                    "accept-language":accept_language,
+                                    "addressdetails":"1",
+                                    "namedetails" : "1",
+                                    "limit": "50"
+                                    })
+    
+    url = "http://%s/search.php?%s"%(osm_host, params)
+#     print(f"Call to OSM: {url}")
+    try: 
+        with urllib.request.urlopen(url) as response:
+            res = response.read()
+            res = json.loads(res)
+#             return res
+            return [ {field: item[field] for field in ["place_id", "lat", "lon", "display_name", "address", "namedetails", "place_rank", "category", "type"]} for item in res] 
+    except Exception as e:
+        raise Exception (f"Cannot get OSM results ({osm_host}): {e}") 
 
+
+# In[55]:
+
+
+get_ipython().run_line_magic('timeit', 'get_osm("Chaussée de Tervueren 59, 1160 Auderghem")')
+
+
+# In[87]:
+
+
+get_ipython().run_line_magic('timeit', 'get_osm("Av. Fonsny 20, 1060 Bruxelles")')
+
+
+# In[49]:
+
+
+addresses["osm"] = addresses.address.progress_apply(get_osm)
+
+
+# In[45]:
+
+
+addresses["address"] = addresses[street_field]+", "+addresses[housenbr_field].fillna("")+", "                             +addresses[postcode_field]+" "+addresses[city_field]+" "+addresses[country_field]
+
+
+# In[47]:
+
+
+# addresses[addresses.address.isnull()]
+
+
+# In[124]:
+
+
+get_ipython().run_line_magic('timeit', 'call_ws_test({street_field:   "Av. Fonsny",          housenbr_field: "20",         city_field:     "Saint-Gilles",         postcode_field: "1060",         country_field:  "Belgium"}, check_result=False, structured_osm=False)')
+# res
+
+
+# In[122]:
+
+
+call_ws_test({street_field:   "Av. Fonsny",          housenbr_field: "20",         city_field:     "Saint-Gilles",         postcode_field: "1060",         country_field:  "Belgium"}, check_result=False, structured_osm=False)
+# res
+
+
+# In[257]:
+
+
+# %timeit 
+res =call_ws({street_field:   "Av. Fonsny",          housenbr_field: "20",         city_field:     "Saint-Gilles",         postcode_field: "1060",         country_field:  "Belgium"}, check_result=False, structured_osm=False)
+res
+
+
+# In[214]:
+
+
+call_ws_test({street_field:   "Av. Fonsny",          housenbr_field: "20",         city_field:     "Saint-Gilles",         postcode_field: "1060",         country_field:  "Belgium"})
+
+
+# In[215]:
+
+
+addresses.progress_apply(call_ws_test, check_result=False, structured_osm=False, axis=1)
+
+
+# In[172]:
+
+
+tm =res["timing"] 
+sum(res["timing"].values()) - res["timing"]["global"]
+
+
+# In[173]:
+
+
+tm["init_df"] + tm["t&p"] + tm["extra_hn"] + tm["format_res"]
 

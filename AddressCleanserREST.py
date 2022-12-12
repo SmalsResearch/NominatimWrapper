@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[ ]:
+# In[10]:
 
 
 from flask import Flask,  request,jsonify
@@ -88,6 +88,20 @@ elif env_log_level == "HIGH":
 else :
     print(f"Unkown log level '{env_log_level}'. Should be LOW/MEDIUM/HIGH")
 
+
+
+# In[ ]:
+
+
+with_timing = os.getenv('TIMING', "NO").upper().strip()
+if with_timing == "NO":
+    with_timing_info = False
+elif with_timing == "YES":
+    with_timing_info = True
+else: 
+    print(f"Unkown TIMING '{with_timing}'. Should be YES/NO")
+    with_timing_info = False
+log(f"TIMING: {with_timing_info} ({with_timing})")
 
 
 # In[ ]:
@@ -266,10 +280,11 @@ if i == 9:
 # In[ ]:
 
 
-
 def process_address(data, check_results=True, osm_structured=False, with_extra_house_number=True):
     vlog(f"Will process {data}")
+    t = datetime.now()
     to_process_addresses = get_init_df(data)
+    #update_timestats("init_df", t)
     
     vlog("Got dataframe")
     all_reject = pd.DataFrame()
@@ -279,13 +294,14 @@ def process_address(data, check_results=True, osm_structured=False, with_extra_h
         vlog ("--------------------------")
 
         try :
+            t = datetime.now()
             osm_results, rejected, step_stats = transform_and_process(to_process_addresses, transformers, addr_key_field, 
                                                                       street_field=street_field, housenbr_field=housenbr_field, 
                                                                       postcode_field=postcode_field, city_field=city_field,
                                                                       country_field=country_field,
                                                                       check_results=check_results,
                                                                       osm_structured=osm_structured)
-            
+            update_timestats("t&p", t)
         except Exception as e: 
             log(f"Error during processing : {e}")
             traceback.print_exc(file=sys.stdout)
@@ -299,8 +315,12 @@ def process_address(data, check_results=True, osm_structured=False, with_extra_h
                 osm_results = add_extra_house_number(osm_results, to_process_addresses, 
                                                      street_field=street_field, housenbr_field=housenbr_field,
                                                      postcode_field=postcode_field, city_field=city_field)
+            t = datetime.now()
+            form_res =  format_res(osm_results)
+            form_rej = format_res(all_reject)
+            update_timestats("format_res", t)
             
-            return {"match": format_res(osm_results), "rejected": format_res(all_reject)}
+            return {"match": form_res, "rejected": form_rej }
     
     return {"rejected": format_res(all_reject)}
 
@@ -376,7 +396,8 @@ app = Flask(__name__)
 @app.route('/search/', methods=['GET', 'POST'])
 def search():
 #     print("search!")
-
+    t = datetime.now()
+    
     for k in AddressCleanserUtils.timestats:
         AddressCleanserUtils.timestats[k]=timedelta(0)
         
@@ -410,22 +431,143 @@ def search():
         with_extra_house_number = True
         vlog("Will do extra house nbr")
     
-    
+#     update_timestats("check_args", t)
     
     res = process_address(data,
                           check_results=check_results, 
                           osm_structured=osm_structured, 
                           with_extra_house_number= with_extra_house_number)
+    
     log(f"Input: {data}")
     log(f"Result: {res}")
     log(f"no_reject: {no_reject}")
    
+    update_timestats("global", t)
+    
+
     if with_timing_info: 
-        res["timing"] = {k: AddressCleanserUtils.timestats[k].total_seconds() for k in AddressCleanserUtils.timestats}
+        res["timing"] = {k: AddressCleanserUtils.timestats[k].total_seconds()*1000 for k in AddressCleanserUtils.timestats}
     
     if no_reject != False:
         del res["rejected"]
+    
+    
+    return jsonify(res)
+
+
+# In[26]:
+
+
+# # data_batch= pd.DataFrame(columns = [street_field, housenbr_field, city_field,postcode_field,country_field])
+# @app.route('/search_async/', methods=['GET', 'POST'])
+# def search_async():
+#     global data_batch
+# #     print("search!")
+#     t = datetime.now()
+    
+#     for k in AddressCleanserUtils.timestats:
+#         AddressCleanserUtils.timestats[k]=timedelta(0)
         
+#     data= {street_field   : get_arg("street",      ""),
+#            housenbr_field : get_arg("housenumber", ""),
+#            city_field     : get_arg("city",        ""),
+#            postcode_field : get_arg("postcode",    ""),
+#            country_field  : get_arg("country",     ""),
+#            "time":          datetime.now()
+#           }
+    
+#     data_batch = pd.concat([data_batch, pd.DataFrame([data])])
+    
+#     log(data_batch)
+    
+#     return jsonify({"key": hash(str(data))})
+
+
+# In[23]:
+
+
+# data_batch = pd.DataFrame(columns = ["street_field", "housenbr_field", "city_field","postcode_field","country_field"])
+# data = {"street_field": "a", "housenbr_field": "b", "city_field": "c","postcode_field":"d","country_field":"d"}
+# pd.concat([data_batch, pd.DataFrame([data])])
+
+
+# In[24]:
+
+
+# data_batch
+
+
+# In[3]:
+
+
+
+@app.route('/test/', methods=['GET', 'POST'])
+def test():
+#     print("search!")
+    start = datetime.now()
+    timings = {}
+#     for k in AddressCleanserUtils.timestats:
+#         AddressCleanserUtils.timestats[k]=timedelta(0)
+        
+    data= {street_field   : get_arg("street",      ""),
+           housenbr_field : get_arg("housenumber", ""),
+           city_field     : get_arg("city",        ""),
+           postcode_field : get_arg("postcode",    ""),
+           country_field  : get_arg("country",     ""),
+
+          }
+    no_reject = get_arg("no_reject", False)
+    
+    if get_arg("check_result", "yes") == "no":
+        check_results = False
+        log("Won't check OSM results")
+    else:
+        check_results = True
+        log("Will check OSM results")
+    
+    if get_arg("struct_osm", "no") == "no":
+        osm_structured = False
+        log("Will call unstructured OSM")
+    else:
+        osm_structured = True
+        log("Will call structured OSM")
+    
+    if get_arg("extra_house_nbr", "yes") == "no":
+        with_extra_house_number = False
+        vlog("Will skip extra house nbr")
+    else:
+        with_extra_house_number = True
+        vlog("Will do extra house nbr")
+    
+    timings["start"]= (datetime.now() - start).total_seconds() * 1000 
+
+    to_process_addresses = get_init_df(data)
+    
+    timings["got init df"]= (datetime.now() - start).total_seconds() * 1000 
+    
+
+    to_process_addresses[osm_addr_field] = to_process_addresses[street_field  ].fillna("") + ", "+                                            to_process_addresses[housenbr_field].fillna("") + ", "+                                            to_process_addresses[postcode_field].fillna("") + " " +                                           to_process_addresses[city_field    ].fillna("") + ", "+                                           to_process_addresses[country_field ].fillna("") 
+    
+    to_process_addresses["accept_language"] = "fr"
+    to_process_addresses[osm_addr_field]= to_process_addresses[osm_addr_field].str.replace("^[ ,]+", "")
+
+    timings["df ready"]= (datetime.now() - start).total_seconds() * 1000 
+
+    with_lambda = False
+    
+    if with_lambda: 
+        osm_res_field = "osm"
+        to_process_addresses[osm_res_field] = to_process_addresses[[osm_addr_field, "accept_language"]].apply(lambda row: get_osm(row[osm_addr_field], row["accept_language"]), axis=1)
+
+        timings["called lambda"]= (datetime.now() - start).total_seconds() * 1000 
+        res = to_process_addresses[osm_res_field].iloc[0][0]
+    else: 
+        res= get_osm(to_process_addresses[osm_addr_field].iloc[0], "fr")
+        timings["called direct"]= (datetime.now() - start).total_seconds() * 1000 
+
+    res = {"res": res,
+           "timing": timings}
+
     return jsonify(res)
 
 

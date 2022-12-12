@@ -55,8 +55,6 @@ within_jupyter=False
 # In[33]:
 
 
-
-
 def log(arg):
     if (type(arg) == pd.core.frame.DataFrame) or (type(arg) == pd.core.frame.Series):
         log_display(arg)
@@ -117,17 +115,21 @@ similarity_threshold = 0.5
 # In[ ]:
 
 
-timestats = {"transformer": timedelta(0),
-             "osm": timedelta(0),
-             "osm_post": timedelta(0),
-             "checker": timedelta(0),
-             "photon": timedelta(0),
-             "libpostal": timedelta(0)}
+timestats = {}
 
 
 # # Functions 
 
 # ## Global
+
+# In[ ]:
+
+
+def update_timestats(label, t):
+    if not label in timestats:
+        timestats[label] = timedelta(0)
+    timestats[label] += datetime.now() - t
+
 
 # In[ ]:
 
@@ -433,37 +435,49 @@ def ignore_mismatch_keep_bests(addr_matches, addr_key_field,
 def retry_with_low_place_rank(osm_results, sent_addresses, 
                               street_field, housenbr_field,  postcode_field, city_field, country_field,
                               check_results=True, osm_structured=False):
+    t = datetime.now()
     vlog("Trying to improve place_rank with place_rank < 30 by cleansed house number ")
-    sent_addresses_26 = osm_results[osm_results.place_rank < 30].merge(sent_addresses)#[osm_addresses.place_rank == 26]
+    sent_addresses_26 = osm_results[osm_results.place_rank < 30]
     
-    vlog(f"    - <30: {sent_addresses_26.shape[0]}")
-    sent_addresses_26 = sent_addresses_26[~sent_addresses_26[housenbr_field].fillna("").astype(str).str.match("^[0-9]*$")]
-    vlog(f"    - numbers: {sent_addresses_26.shape[0]}")
-    sent_addresses_26["housenbr_clean"] = sent_addresses_26[housenbr_field].fillna("").astype(str).str.extract("^([0-9]+)")[0]
-
-    sent_addresses_26["osm_addr_in"] =   sent_addresses_26[street_field  ].fillna("") + ", "+ sent_addresses_26["housenbr_clean"].fillna("") +", " +                                          sent_addresses_26[postcode_field].fillna("") + " " +sent_addresses_26[city_field    ].fillna("") +", "+                                          sent_addresses_26[country_field].fillna("")
-
-    vlog(" ; ".join([f"rank {r}: {c}" for r, c in sent_addresses_26.place_rank.value_counts().iteritems()]))
-    #print(osm_results_26.place_rank.value_counts())
-    osm_results_26, rejected_26 = process_osm(sent_addresses_26, 
-                                              osm_addr_field="osm_addr_in", addr_key_field=addr_key_field, 
-                                              street_field=street_field,housenbr_field="housenbr_clean",  
-                                              postcode_field=postcode_field, city_field=city_field,
-                                              country_field=country_field,
-                                              check_results=check_results,
-                                              osm_structured=osm_structured)
+    if sent_addresses_26.shape[0]>0:
+        sent_addresses_26 = sent_addresses_26.merge(sent_addresses)#[osm_addresses.place_rank == 26]
     
-    if osm_results_26.shape[0]>0:
-        vlog("     - New results with place_rank == 30 after cleansing ({}):".format(" ; ".join([f"rank {r}: {c}" for r, c in osm_results_26.place_rank.value_counts().iteritems()])))
-        
-        osm_results_26 = osm_results_26[osm_results_26.place_rank == 30]
-        osm_results_26["retry_on_26"] = True
-        
-#         display(osm_results_26)
-        
-        osm_results = osm_results[~osm_results[addr_key_field].isin(osm_results_26[addr_key_field])].append(osm_results_26, sort=False)
-        
+        vlog(f"    - <30: {sent_addresses_26.shape[0]}")
+        sent_addresses_26 = sent_addresses_26[~sent_addresses_26[housenbr_field].fillna("").astype(str).str.match("^[0-9]*$")]
+        vlog(f"    - numbers: {sent_addresses_26.shape[0]}")
+        sent_addresses_26["housenbr_clean"] = sent_addresses_26[housenbr_field].fillna("").astype(str).str.extract("^([0-9]+)")[0]
+
+        sent_addresses_26["osm_addr_in"] =   sent_addresses_26[street_field  ].fillna("") + ", "+ sent_addresses_26["housenbr_clean"].fillna("") +", " +                                              sent_addresses_26[postcode_field].fillna("") + " " +sent_addresses_26[city_field    ].fillna("") +", "+                                              sent_addresses_26[country_field].fillna("")
+
+        vlog(" ; ".join([f"rank {r}: {c}" for r, c in sent_addresses_26.place_rank.value_counts().iteritems()]))
+        #print(osm_results_26.place_rank.value_counts())
+        osm_results_26, rejected_26 = process_osm(sent_addresses_26, 
+                                                  osm_addr_field="osm_addr_in", addr_key_field=addr_key_field, 
+                                                  street_field=street_field,housenbr_field="housenbr_clean",  
+                                                  postcode_field=postcode_field, city_field=city_field,
+                                                  country_field=country_field,
+                                                  check_results=check_results,
+                                                  osm_structured=osm_structured)
+
+        if osm_results_26.shape[0]>0:
+            vlog("     - New results with place_rank == 30 after cleansing ({}):".format(" ; ".join([f"rank {r}: {c}" for r, c in osm_results_26.place_rank.value_counts().iteritems()])))
+
+            osm_results_26 = osm_results_26[osm_results_26.place_rank == 30]
+            osm_results_26["retry_on_26"] = True
+
+    #         display(osm_results_26)
+
+            osm_results = osm_results[~osm_results[addr_key_field].isin(osm_results_26[addr_key_field])].append(osm_results_26, sort=False)
+    
+    update_timestats("t&p > process > retry_low_rank", t)
+    
     return osm_results
+
+
+# In[ ]:
+
+
+
 
 
 # In[71]:
@@ -477,17 +491,13 @@ def find_house_number(street, house_number):
     lpost = {x: y for (y, x) in lpost}
     return lpost["house_number"] if "house_number" in lpost else np.NaN
 
-# def add_extra_house_number(osm_addresses, addresses, street_field, housenbr_field):
-#     if "addr_out_number" not in osm_addresses:
-#         return osm_addresses
-        
-#     result = osm_addresses.merge(addresses)
-#     result["extra_house_nbr"] = result.apply(lambda row: find_house_number(row[street_field], row[housenbr_field]), axis=1)
 
-#     return result[np.concatenate([osm_addresses.keys(), ["extra_house_nbr"]])]
 
 def get_lpost_house_number(street):
+    t = datetime.now()
     lpost = parse_address(street)
+    update_timestats("extra_hn > lpost", t)
+    
     housenbr = ";".join([y for (y, x) in lpost if x=="house_number"])
     boxnbr = ";".join([y for (y, x) in lpost if x=="unit"])
 #     log(f"get_lp : '{street}' - {housenbr} - {boxnbr}")
@@ -497,6 +507,9 @@ def get_lpost_house_number(street):
     
 def add_extra_house_number(osm_addresses, addresses, street_field, housenbr_field, city_field, postcode_field ):
     vlog("Start adding extra house number")
+    
+    t = datetime.now()
+    
     if "addr_out_number" not in osm_addresses:
         return osm_addresses
     
@@ -507,29 +520,13 @@ def add_extra_house_number(osm_addresses, addresses, street_field, housenbr_fiel
     lp = result.fillna("").apply(lambda row: get_lpost_house_number(f"{row[street_field]} {row[housenbr_field]}, {row[postcode_field]} {row[city_field]}".strip()), axis=1,  result_type ='expand')
     
     #lp= (result[street_field] + " " + result[housenbr_field]).apply(get_lpost_house_number, result_type ='expand')#, axis=1)
-#     log(f"lp: {lp}")
+    log(f"lp: {lp}")
     result[["lpost_house_nbr", "lpost_unit"]] = lp
-    vlog("End of  adding extra house number")
+    
+    vlog("End of adding extra house number")
+    update_timestats("extra_hn", t)
+    
     return result[np.concatenate([osm_addresses.keys(), ["in_house_nbr", "lpost_house_nbr", "lpost_unit"]])]
-
-
-# In[ ]:
-
-
-# add_extra_house_number(osm_results, to_process_addresses, 
-#                                                      street_field=street_field, housenbr_field=housenbr_field,
-#                                                      postcode_field=postcode_field, city_field=city_field)
-
-
-# In[64]:
-
-
-# def parse_address(street):
-#     return [("20",  "house_number"), ("a", "unit")]
-# osm_addresses = pd.DataFrame({"addr_key" : [1], "addr_out_number": [""]})
-# addresses = pd.DataFrame({"addr_key" : [1], "street_field": ["avenue fonsnsy 30"], "housenbr_field": [""]})
-
-# add_extra_house_number(osm_addresses, addresses, "street_field", "housenbr_field")
 
 
 # In[29]:
@@ -582,8 +579,9 @@ def transform_and_process(to_process_addresses, transformers, addr_key_field, st
     vlog(sent_addresses.head())
     vlog(sent_addresses.shape)
 
-    timestats["transformer"] += datetime.now() - t
-         
+    update_timestats("t&p > transformer", t)
+    
+    t = datetime.now() 
     osm_results, rejected = process_osm(sent_addresses, 
                                         osm_addr_field="osm_addr_in", addr_key_field=addr_key_field, 
                                         street_field=street_field, housenbr_field=housenbr_field, 
@@ -600,6 +598,7 @@ def transform_and_process(to_process_addresses, transformers, addr_key_field, st
                                                 country_field=country_field,
                                                 check_results=check_results)
 
+    update_timestats("t&p > process", t)
     osm_results["method"] = method
     rejected["method"] = method
 
@@ -757,8 +756,9 @@ def process_osm(df, osm_addr_field, addr_key_field, street_field, housenbr_field
                                                                   accept_language = row["accept_language"]), axis=1)
     else: 
         to_process[osm_res_field] = to_process[[osm_addr_field, "accept_language"]].apply(lambda row: get_osm(row[osm_addr_field], row["accept_language"]), axis=1)
-        
-    timestats["osm"] += datetime.now() - t
+    
+    update_timestats("t&p > process > osm", t)
+    
     
     t = datetime.now()
 #     to_process.to_pickle("osm_raw.pkl")
@@ -775,7 +775,8 @@ def process_osm(df, osm_addr_field, addr_key_field, street_field, housenbr_field
     
     vlog(f"     - OSM got {osm_results.shape[0]} results for {osm_results[addr_key_field].nunique()} addresses")
     
-    timestats["osm_post"] += datetime.now() - t
+    update_timestats("t&p > process > osm_post", t)
+    
 #     display(osm_results)
     
 #     osm_results.to_pickle("osm_parsed.pkl")
@@ -842,7 +843,8 @@ def process_osm(df, osm_addr_field, addr_key_field, street_field, housenbr_field
             else:
                 vlog("     - Not any alt name")
         
-        timestats["checker"] += datetime.now() - t
+        update_timestats("t&p > process > checker", t)
+        
     else: 
         
         vlog("    - Do not check OSM results, just keep the first result for each request.")
@@ -869,6 +871,8 @@ def process_osm(df, osm_addr_field, addr_key_field, street_field, housenbr_field
 
 def osm_parse_and_split(df, osm_res_field, osm_addr_field, prefix="addr_", drop_osm=True):
     osm_result_item_field = "osm_item_result"
+    t = datetime.now()
+        
 
     df = df.set_index([osm_addr_field])
     
@@ -880,6 +884,8 @@ def osm_parse_and_split(df, osm_res_field, osm_addr_field, prefix="addr_", drop_
     
     osm_results = pd.DataFrame(df_split.stack()).rename(columns = {0:osm_result_item_field})
     
+#     update_timestats("parse&split1", t)
+    
     vlog("        * Extract items")
 
     for item in osm_results.iloc[0][osm_result_item_field].keys() :
@@ -887,16 +893,19 @@ def osm_parse_and_split(df, osm_res_field, osm_addr_field, prefix="addr_", drop_
     
     
     addr_items = []
-
+    
+#     update_timestats("parse&split2", t)
     for row in osm_results[osm_result_item_field].apply(lambda x: x["address"]):
         for addr_item in row.keys():
             addr_items.append(addr_item)
             
     addr_items = pd.Series(addr_items).value_counts().keys().values
     
+#     update_timestats("parse&split3", t)
     for addr_item in addr_items:
         osm_results[prefix+addr_item] = osm_results[osm_result_item_field].apply(lambda x: x["address"][addr_item] if addr_item in x["address"] else None)
-        
+    
+#     update_timestats("parse&split4", t)
     # Keep only "namedetails" if category == "highway"
     osm_results["namedetails"] = np.where(osm_results["category"] == "highway", osm_results["namedetails"].apply(lambda dct: " - ".join(dct.values())), "")
     
@@ -904,9 +913,13 @@ def osm_parse_and_split(df, osm_res_field, osm_addr_field, prefix="addr_", drop_
     
     osm_results.place_rank=osm_results.place_rank.astype(int)
     
+#     update_timestats("parse&split5", t)
+    
     osm_results = add_addr_out_columns(osm_results, prefix)
     
     osm_results = osm_results.reset_index().rename(columns={"level_1": "osm_order"})
+    
+    update_timestats("t&p > process > osm_post > parse&split", t)
     
     return osm_results
 
@@ -1217,7 +1230,8 @@ def photon_transformer(addresses, addr_key_field, street_field, housenbr_field, 
     fields_out    = [field_in      for field_in, field_photon in fields]
     fields_photon = [field_photon  for field_in, field_photon in fields]
    
-    timestats["photon"] += datetime.now() - t
+    update_timestats("'t&p > transformer > photon", t)
+    
     return photon_res_sel[[addr_key_field] + fields_photon].rename(columns= {field_photon: field_in for field_in, field_photon in fields})[[addr_key_field] + fields_out]
 
 
@@ -1301,7 +1315,8 @@ def libpostal_transformer(addresses, addr_key_field, street_field, housenbr_fiel
     fields_out    = [field_in      for field_in, field_lpost in fields]
     fields_lpost  = [field_lpost   for field_in, field_lpost in fields]
    
-    timestats["libpostal"] += datetime.now() - t
+    update_timestats("'t&p > transformer > libpostal", t)
+    
     return libpost_addr[[addr_key_field] + fields_lpost].rename(columns= {field_lpost: field_in for field_in, field_lpost in fields})[[addr_key_field] + fields_out]
 
 

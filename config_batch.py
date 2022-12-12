@@ -10,13 +10,13 @@ check_osm_results = True
 
 # addresses_filename  = path + "address.csv.gz" 
 
-street_field   = "StreetFR"
-housenbr_field = "HouseNumber"
-city_field     = "MunicipalityFR"
-postcode_field = "Zipcode"
+street_field   = "street" #"StreetFR"
+housenbr_field = "housenumber" #"HouseNumber"
+city_field     = "city" #"MunicipalityFR"
+postcode_field = "postcode" #"Zipcode"
 country_field = "CountryFR"
 #addr_key_field = "addr_index"
-addr_key_field = "EntityNumber"
+addr_key_field = "addr_key" #"EntityNumber"
 
 sample_size = None# 1000
 

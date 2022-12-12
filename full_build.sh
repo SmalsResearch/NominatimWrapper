@@ -1,24 +1,61 @@
 #!/bin/bash
 
+# check that docker is installed
+if ! command -v docker &> /dev/null
+then
+    echo "'docker' not found, please install if first"
+    exit
+fi
+
+# check that docker-composed is installed
+
+if ! command -v docker-compose &> /dev/null
+then
+    echo "'docker-compose' not found, please install if first"
+    exit
+fi
+
+# check that docker is up&running and user has access
+
+if ! docker ps &> /dev/null
+then
+    echo "Cannot run 'docker ps' ; please check your config"
+    exit
+fi
+
+
 NOMINATIM_CNT=nominatim
 date
+echo 
 echo "#####################"
 echo "## BUILD NOMINATIM ##"
 echo "#####################"
+echo 
+
+# docker-compose -f docker-compose-full.yml up -d $NOMINATIM_CNT
+# 
+# echo "Waiting for nominatim container to be ready (type 'docker logs -f $NOMINATIM_CNT' to follow progression) ..."
+# (docker logs $NOMINATIM_CNT -f 2>&1 & ) | grep -q "database system is ready to accept connections"
+# 
+# docker logs $NOMINATIM_CNT
+# 
+# docker ps 
+# 
+# if docker ps |grep -q "mediagis/nominatim"; 
+# then
+#     echo "nominatim is running"
+# else
+#     echo "nominatim is not running please check logs!"
+#     exit
+# fi
 
 
-docker-compose -f docker-compose-full.yml up -d $NOMINATIM_CNT
-
-# Wait for container to be ready
-(docker logs $NOMINATIM_CNT -f 2>&1 & ) | grep -q "database system is ready to accept connections"
-
-docker ps 
-
+echo 
 date
 echo "#########################"
 echo "## PREPARE PHOTON DATA ##"
 echo "#########################"
-
+echo 
 
 wget --progress=dot:mega https://github.com/komoot/photon/releases/download/0.3.5/photon-0.3.5.jar
 
@@ -49,11 +86,11 @@ docker exec -it $NOMINATIM_CNT rm -rf /photon.tar.gz /photon-0.3.5.jar photon_da
 docker stop $NOMINATIM_CNT
 docker rm $NOMINATIM_CNT # Otherwise next "up" fails (why ???)
 
+echo 
 date
 echo "############################"
 echo "## BUILD NOMINATIMWRAPPER ##"
 echo "############################"
+echo 
 
-docker-compose -f docker-compose-full.yml build
-
-
+# docker-compose -f docker-compose-full.yml build
