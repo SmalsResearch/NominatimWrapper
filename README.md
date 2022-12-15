@@ -145,4 +145,22 @@ Evaluating the quality of an anwser can be done in several ways. There are two a
     - 26 : precision is at street level;
     - 13-16 : city level;
     - 4 : country level.
+    
+## Fast mode
 
+By default, single mode is actually converted in a batch mode with a single record. This drastically increases the overhead for all the cases where the response from Nominatim is already a good match.
+
+When "FASTMODE" option is set to "yes" in docker-compose file (services > wrapper > environment) and "check_result" is "no", a simple process is first tried. If Nominatim does not give any response, the full batch mode is started. Here are the steps being started (which roughly also corresponds to steps performed in batch mode): 
+
+- The following address is sent to Nominatim : "street, housenumber, postcode city, country" (is struct_osm is 'no')
+- If it gives results, we format all results : 
+    - "addr_out_street" receives the first not null value in the following fields: ["road", "pedestrian","footway", "cycleway", "path", "address27", "construction", "hamlet", "park"]
+    - "addr_out_city": first value in ["town", "village", "city_district", "county", "city"],
+    - "addr_out_number":   "house_number",
+    - "addr_out_country":  "country",
+    - "addr_out_postcode": "postcode",
+    - fields ["display_name", "place_id", "lat","lon", "place_rank"] as simply copied from Nominatim output
+- "match" corresponds to the first result (with "method" set to "start"), "reject" to all others (with "reject_reason" set to "tail") if any
+- If place_rank in match record is below 30 and housenumber (in input) contains other characters than digits, we retry to call Nominatim by only considering the first digits of housenumber : "30A","30.3", "30 bt 2", "30-32" become "30". If it gives a result with place_rank = 30, we keep it (in this case, a "cleansed_house_nbr" appears in the output, with "30" in this example). Otherwise, we keep the original result 
+- If extra_house_nbr is 'yes', we apply the method described above (in REST API > options) to enrich record with libpostal data. 
+    

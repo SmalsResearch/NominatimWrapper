@@ -1,13 +1,14 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[10]:
+# In[31]:
 
 
 from flask import Flask,  request,jsonify
 
 import pandas as pd
 
+import re
 
 import os
 
@@ -26,29 +27,12 @@ from datetime import datetime, timedelta
 import time
 
 
-# In[ ]:
+# In[32]:
 
 
 import config_REST
 reload(config_REST)
 from config_REST import *
-
-
-# In[ ]:
-
-
-# TO RUN : 
-# jupyter nbconvert --to python AddressCleanserREST.ipynb
-# export  FLASK_APP=AddressCleanserREST.py ; export  FLASK_ENV=development ;  flask   run  
-
-# OR : 
-# gunicorn -w 8 -b 127.0.0.1:5000 wsgi:app
-
-
-# In[ ]:
-
-
-# !jupyter nbconvert --to python AddressCleanserREST.ipynb
 
 
 # In[ ]:
@@ -107,6 +91,20 @@ log(f"TIMING: {with_timing_info} ({with_timing})")
 # In[ ]:
 
 
+with_fastmode = os.getenv('FASTMODE', "NO").upper().strip()
+if with_fastmode == "NO":
+    fastmode = False
+elif with_fastmode == "YES":
+    fastmode = True
+else: 
+    print(f"Unkown FASTMODE '{with_fastmode}'. Should be YES/NO")
+    fastmode = False
+log(f"FASTMODE: {fastmode} ({with_fastmode})")
+
+
+# In[ ]:
+
+
 def get_init_df(data):
     return pd.DataFrame([{addr_key_field : "1",
                           street_field:   data["street"],
@@ -142,7 +140,7 @@ def format_res(res):
     return list(res.fillna("").apply(lambda row: get_row_dict(row, False), axis=1))
 
 
-# In[ ]:
+# In[34]:
 
 
 default_transformers_sequence = [ ["orig"],
@@ -271,7 +269,109 @@ if i == 9:
         log(f"Photon host: {AddressCleanserUtils.photon_host}")
 
 
+# In[40]:
+
+
+# re.sub("[^0-9]", "", "35A2")
+
+
+# In[45]:
+
+
+
+
+
 # In[ ]:
+
+
+def format_osm_addr(osm_rec):
+    res = {"method":"fast"}
+    
+    for f in ["display_name", "place_id", "lat","lon", "place_rank"]:
+        if f in osm_rec: 
+            res[f] = osm_rec[f]
+        
+    for out_field in collapse_params:
+        res[out_field] = ""
+        for in_field in collapse_params[out_field]:
+            if in_field in osm_rec["address"]:
+                res[out_field] = osm_rec["address"][in_field]
+                break
+    return res
+        
+def add_lpost_house_number(addr_in, match, data):
+    lpost = get_lpost_house_number(addr_in)
+    match["in_house_nbr"] = data["housenumber"] if "housenumber" in data else ""
+    match["lpost_house_nbr"] = lpost[0]
+    match["lpost_unit"] = lpost[1]
+
+def process_address_fast(data, osm_structured=False, with_extra_house_number=True, retry_with_low_rank=True):
+    t = datetime.now()
+    
+    
+    addr_in = f"{data['street']}, {data['housenumber']}, {data['postcode']} {data['city']}, {data['country']}"
+    if osm_structured:
+        osm_res = get_osm_struc(street=     data['street'],
+                                housenumber=data['housenumber'],
+                                postcode=   data['postcode'],
+                                city=       data['city'],
+                                country=    data['country']
+                               )
+    else: 
+        osm_res = get_osm(addr_in)
+    
+    update_timestats("fast > osm", t)
+    
+    if len(osm_res) >0:
+        match = format_osm_addr(osm_res[0])
+        
+        if retry_with_low_rank and match["place_rank"] < 30: # Try to clean housenumber to see if we can improved placerank
+            t2 = datetime.now()    
+            cleansed_housenbr = re.match("^([0-9]+)", data['housenumber'])
+            if cleansed_housenbr: 
+                cleansed_housenbr = cleansed_housenbr[0]
+            
+            if cleansed_housenbr != data['housenumber']:
+                
+                data_cleansed= data.copy()
+                data_cleansed['housenumber'] = cleansed_housenbr
+                osm_res_retry = process_address_fast(data_cleansed, 
+                                                     osm_structured=osm_structured, 
+                                                     with_extra_house_number=False,
+                                                     retry_with_low_rank = False)
+                if osm_res_retry and osm_res_retry["match"][0]["place_rank"] == 30: # if place_rank is not improved, we keep the original result
+                    osm_res_retry["match"][0]["cleansed_house_nbr"] = cleansed_housenbr
+                    if with_extra_house_number:
+                        add_lpost_house_number(addr_in, osm_res_retry["match"][0], data)
+
+                    update_timestats("fast > retry", t2)
+                    return osm_res_retry
+            
+            
+        
+        if with_extra_house_number:
+            add_lpost_house_number(addr_in, match, data)
+            
+            
+        match["osm_addr_in"] = addr_in
+        res = {"match":  [match], 
+               "reject": []}
+        
+        for osm_rec in osm_res[1:]:
+            r = format_osm_addr(osm_rec)
+            r["reject_reason"]= "tail"
+            res["reject"].append(r)
+        #log(res)
+        update_timestats("fast", t)
+        return res
+        
+    update_timestats("fast", t)
+    return None
+    
+    
+
+
+# In[38]:
 
 
 
@@ -283,12 +383,20 @@ if i == 9:
 def process_address(data, check_results=True, osm_structured=False, with_extra_house_number=True):
     vlog(f"Will process {data}")
     t = datetime.now()
+    
+    if fastmode and not check_results: 
+        vlog("Try fast mode")
+        res = process_address_fast(data, osm_structured=osm_structured, with_extra_house_number=with_extra_house_number)
+        if res: 
+            return res
+        vlog("No result in fast mode, go to full batch mode")
+        
     to_process_addresses = get_init_df(data)
     #update_timestats("init_df", t)
     
     vlog("Got dataframe")
     all_reject = pd.DataFrame()
-    for transformers in transformers_sequence:
+    for transformers in (transformers_sequence if not fastmode else transformers_sequence[1:] ) : # Assumes ['orig'] is always the first transf. sequence
         vlog ("--------------------------")
         vlog("| Transformers : " + ";".join(transformers))
         vlog ("--------------------------")
@@ -455,120 +563,10 @@ def search():
     return jsonify(res)
 
 
-# In[26]:
-
-
-# # data_batch= pd.DataFrame(columns = [street_field, housenbr_field, city_field,postcode_field,country_field])
-# @app.route('/search_async/', methods=['GET', 'POST'])
-# def search_async():
-#     global data_batch
-# #     print("search!")
-#     t = datetime.now()
-    
-#     for k in AddressCleanserUtils.timestats:
-#         AddressCleanserUtils.timestats[k]=timedelta(0)
-        
-#     data= {street_field   : get_arg("street",      ""),
-#            housenbr_field : get_arg("housenumber", ""),
-#            city_field     : get_arg("city",        ""),
-#            postcode_field : get_arg("postcode",    ""),
-#            country_field  : get_arg("country",     ""),
-#            "time":          datetime.now()
-#           }
-    
-#     data_batch = pd.concat([data_batch, pd.DataFrame([data])])
-    
-#     log(data_batch)
-    
-#     return jsonify({"key": hash(str(data))})
-
-
-# In[23]:
-
-
-# data_batch = pd.DataFrame(columns = ["street_field", "housenbr_field", "city_field","postcode_field","country_field"])
-# data = {"street_field": "a", "housenbr_field": "b", "city_field": "c","postcode_field":"d","country_field":"d"}
-# pd.concat([data_batch, pd.DataFrame([data])])
-
-
 # In[24]:
 
 
 # data_batch
-
-
-# In[3]:
-
-
-
-@app.route('/test/', methods=['GET', 'POST'])
-def test():
-#     print("search!")
-    start = datetime.now()
-    timings = {}
-#     for k in AddressCleanserUtils.timestats:
-#         AddressCleanserUtils.timestats[k]=timedelta(0)
-        
-    data= {street_field   : get_arg("street",      ""),
-           housenbr_field : get_arg("housenumber", ""),
-           city_field     : get_arg("city",        ""),
-           postcode_field : get_arg("postcode",    ""),
-           country_field  : get_arg("country",     ""),
-
-          }
-    no_reject = get_arg("no_reject", False)
-    
-    if get_arg("check_result", "yes") == "no":
-        check_results = False
-        log("Won't check OSM results")
-    else:
-        check_results = True
-        log("Will check OSM results")
-    
-    if get_arg("struct_osm", "no") == "no":
-        osm_structured = False
-        log("Will call unstructured OSM")
-    else:
-        osm_structured = True
-        log("Will call structured OSM")
-    
-    if get_arg("extra_house_nbr", "yes") == "no":
-        with_extra_house_number = False
-        vlog("Will skip extra house nbr")
-    else:
-        with_extra_house_number = True
-        vlog("Will do extra house nbr")
-    
-    timings["start"]= (datetime.now() - start).total_seconds() * 1000 
-
-    to_process_addresses = get_init_df(data)
-    
-    timings["got init df"]= (datetime.now() - start).total_seconds() * 1000 
-    
-
-    to_process_addresses[osm_addr_field] = to_process_addresses[street_field  ].fillna("") + ", "+                                            to_process_addresses[housenbr_field].fillna("") + ", "+                                            to_process_addresses[postcode_field].fillna("") + " " +                                           to_process_addresses[city_field    ].fillna("") + ", "+                                           to_process_addresses[country_field ].fillna("") 
-    
-    to_process_addresses["accept_language"] = "fr"
-    to_process_addresses[osm_addr_field]= to_process_addresses[osm_addr_field].str.replace("^[ ,]+", "")
-
-    timings["df ready"]= (datetime.now() - start).total_seconds() * 1000 
-
-    with_lambda = False
-    
-    if with_lambda: 
-        osm_res_field = "osm"
-        to_process_addresses[osm_res_field] = to_process_addresses[[osm_addr_field, "accept_language"]].apply(lambda row: get_osm(row[osm_addr_field], row["accept_language"]), axis=1)
-
-        timings["called lambda"]= (datetime.now() - start).total_seconds() * 1000 
-        res = to_process_addresses[osm_res_field].iloc[0][0]
-    else: 
-        res= get_osm(to_process_addresses[osm_addr_field].iloc[0], "fr")
-        timings["called direct"]= (datetime.now() - start).total_seconds() * 1000 
-
-    res = {"res": res,
-           "timing": timings}
-
-    return jsonify(res)
 
 
 # In[ ]:
@@ -579,7 +577,7 @@ def remove_empty_values(dct_lst):
     return [{k: v for k, v in item.items() if not pd.isnull(v) and v != ""} for item in dct_lst]
 
 
-# In[5]:
+# In[47]:
 
 
 # Call to this : curl -F media=@address_sample100.csv http://127.0.0.1:5000/batch/ -X POST -F mode=long
@@ -638,7 +636,10 @@ def batch():
     for field in mandatory_fields:
         if field not in df: 
             return f"[{{\"error\": \"Field \'{field}\' mandatory in file. All mandatory fields are {';'.join(mandatory_fields)}\"}}]"
-    
+
+    if df[df[addr_key_field].duplicated()].shape[0]>0:
+        return f"[{{\"error\": \"Field \'{field}\' cannot contain duplicated values!\"}}]"
+        
     res, rejected_addresses = process_addresses(df,
                                                 check_results=check_results, 
                                                 osm_structured=osm_structured,
@@ -678,16 +679,4 @@ def batch():
     
     return res.to_json(orient="records")
     #request.files:
-
-
-# In[ ]:
-
-
-#! jupyter nbconvert --to python AddressCleanserREST.ipynb
-
-
-# In[ ]:
-
-
-
 

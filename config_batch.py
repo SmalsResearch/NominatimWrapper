@@ -62,7 +62,7 @@ regex_replacements =  {
 
 def get_addresses(addresses_filename):
     addresses = pd.read_csv(addresses_filename,  
-                            usecols = [addr_key_field,
+                            usecols = lambda x: x in [addr_key_field,
                                        country_field, 
                                        postcode_field, 
                                        city_field, 
@@ -71,7 +71,10 @@ def get_addresses(addresses_filename):
                                        country_field], 
                            dtype={postcode_field: str, housenbr_field: str, country_field: str})
     
-    addresses[country_field] =addresses[country_field].fillna("Belgique")
+    if country_field in addresses: 
+        addresses[country_field] =addresses[country_field].fillna("Belgique")
+    else: 
+        addresses[country_field] = "Belgique"
     #addresses = addresses.rename(columns={"index":addr_key_field})
     
     addresses = addresses[addresses[street_field].notnull() & addresses[city_field].notnull()] # & addresses[country_field].isnull() ]

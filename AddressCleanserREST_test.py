@@ -40,7 +40,7 @@ import urllib3
 http = urllib3.PoolManager()
 
 
-# In[4]:
+# In[5]:
 
 
 from config_batch import * 
@@ -48,7 +48,7 @@ from config_batch import *
 
 # # Functions
 
-# In[5]:
+# In[6]:
 
 
 ws_hostname = "127.0.1.1"
@@ -57,7 +57,7 @@ ws_hostname = "172.27.0.64"
 # ws_hostname = "192.168.1.3"
 
 
-# In[83]:
+# In[7]:
 
 
 def call_ws(addr_data, check_result=True, structured_osm=False): #lg = "en,fr,nl"
@@ -86,36 +86,7 @@ def call_ws(addr_data, check_result=True, structured_osm=False): #lg = "en,fr,nl
     
 
 
-# In[189]:
-
-
-def call_ws_test(addr_data, check_result=True, structured_osm=False): #lg = "en,fr,nl"
-    t = datetime.now()
-    
-    params = urllib.parse.urlencode({"street": addr_data[street_field],
-                                     "housenumber": addr_data[housenbr_field],
-                                     "city": addr_data[city_field],
-                                     "postcode": addr_data[postcode_field],
-                                     "country": addr_data[country_field],
-                                     "check_result" : "yes" if check_result else "no",
-                                     "struct_osm" : "yes" if structured_osm else "no"
-                                    })
-    url = f"http://{ws_hostname}:5000/search_async/?{params}"
-    
-#     print(url)
-    try:
-        with urllib.request.urlopen(url) as response:
-            res = response.read()
-            res = json.loads(res)
-#             print(res)
-            res["time"] = (datetime.now() - t).total_seconds()
-            return res
-    except Exception as e:
-        return str(e)
-    
-
-
-# In[64]:
+# In[9]:
 
 
 def call_ws_batch(addr_data, mode="geo", with_reject=False, check_result=True, structured_osm=False): #lg = "en,fr,nl"
@@ -154,7 +125,7 @@ def call_ws_batch(addr_data, mode="geo", with_reject=False, check_result=True, s
     return res
 
 
-# In[9]:
+# In[62]:
 
 
 def expand_json(addresses):
@@ -166,7 +137,7 @@ def expand_json(addresses):
     addresses["method"]= addresses.json.apply(lambda d: d["match"][0]["method"] if len(d)>0 and "match" in d else "none")
     
     for field in ["street", "number", "postcode", "city"]:
-        addresses[field]= addresses.json.apply(lambda d: d["match"][0]["addr_out_"+field] if len(d)>0 and "match" in d else "")
+        addresses["addr_out_"+field]= addresses.json.apply(lambda d: d["match"][0]["addr_out_"+field] if len(d)>0 and "match" in d else "")
     return 
 
 
@@ -174,98 +145,125 @@ def expand_json(addresses):
 
 # ## Single address calls
 
-# In[229]:
+# In[337]:
 
 
 res=call_ws({street_field:   "Av. Fonsny",          housenbr_field: "20",         city_field:     "Saint-Gilles",         postcode_field: "1060",         country_field:  "Belgium"}, check_result=False, structured_osm=False)
 res
 
 
-# In[69]:
-
-
-sum(res["timing"].values())
-
-
-# In[225]:
-
-
-call_ws({street_field:   "", 
-         housenbr_field: "",
-         city_field:     "Dinant",
-         postcode_field: "5500",
-         country_field:  "Belgium"}, check_result=True, structured_osm=True)
-
-
-# In[ ]:
-
-
-
-
-
-# In[ ]:
-
-
-
-
-
 # ## Batch calls (row by row)
 
-# In[223]:
+# In[356]:
 
 
+# KBO dataset
 addresses = get_addresses("address.csv.gz")
 # addresses = addresses.sample(10000, replace=True).copy()
+addresses["addr_key"] = addresses["addr_key"].astype(str)
 addresses
+
+
+# In[264]:
+
+
+addresses = get_addresses("../GISAnalytics/data/geocoding/resto_1000_sample.csv.gz")
+# addresses = get_addresses("../GISAnalytics/data/geocoding/best_1000_sample.csv.gz")
+addresses["addr_key"] = addresses.index.astype(str)
+addresses
+
+
+# In[349]:
+
+
+addresses = pd.concat([
+    get_addresses("../GISAnalytics/data/geocoding/resto_1000_sample.csv.gz"),
+    get_addresses("../GISAnalytics/data/geocoding/best_1000_sample.csv.gz"),
+    get_addresses("address.csv.gz")])
+addresses = addresses.reset_index(drop=True)
+addresses["addr_key"] = addresses.index.astype(str)
+
+
+# In[312]:
+
+
+# addresses = addresses[addresses.addr_key.isin([ "2078829"])]#"1622",
+# addresses
 
 
 # 
 # ### Simple way
 
-# In[230]:
+# In[338]:
 
 
-addresses["json"] = addresses.progress_apply(call_ws, check_result=False, structured_osm=False, axis=1)
-# 5.14, 4.83 it/s
-# 2.08 8.92
+addresses_seq = addresses.copy()
+
+t = datetime.now()
+addresses_seq["json"] = addresses_seq.fillna("").progress_apply(call_ws, check_result=False, structured_osm=False, axis=1)
+tot_time = (datetime.now() - t).total_seconds()
+print(f"{tot_time:.2f} seconds, {addresses_seq.shape[0]/tot_time:.2f} it/s")
+# KBO dataset:
+# Normal mode: 128.78 seconds, 7.77 it/s
+# Fastmode:     68.80 seconds, 14.54 it/s
+
+#Resto dataset: 
+# Normal mode: 145.73 seconds, 6.86 it/s
+# Fast mode:    82.99 seconds, 12.05 it/s
+
+# Best dataset:
+# Normal mode: 108.53 seconds, 9.21 it/s
+# Fast mode: 37.44 seconds, 26.71 it/s
 
 
-# In[52]:
+# In[315]:
 
 
-addresses.iloc[5].json
+expand_json(addresses_seq)
+addresses_seq
 
 
-# In[53]:
+# In[150]:
 
 
-sum(addresses.iloc[5].json["timing"].values())
-
-
-# In[260]:
-
-
-call_ws({street_field: "Rue Mouligneaux", 
-         housenbr_field: 14, 
-         postcode_field: 7120, 
-         city_field:  "Estinnes", 
-         country_field: "Belgique"})
+addresses_seq.method.value_counts()
 
 
 # ### Using Dask
 
-# In[258]:
+# In[229]:
 
 
-dd_addresses = dd.from_pandas(addresses, npartitions=8)
+addresses_dask = addresses.copy()
+
+
+# In[230]:
+
+
+t = datetime.now()
+dd_addresses = dd.from_pandas(addresses_dask, npartitions=8)
 
 dask_task = dd_addresses.apply(call_ws, check_result=False, meta=('x', 'str'), axis=1)
 
 with ProgressBar(): 
-    addresses["json"] = dask_task.compute()
+    addresses_dask["json"] = dask_task.compute()
+    
+tot_time = (datetime.now() - t).total_seconds()
+print(f"{tot_time:.2f} seconds, {addresses_dask.shape[0]/tot_time:.2f} it/s")
+# KBO dataset:
+# Fastmode:    15.81 seconds, 63.27 it/s
+# Normal mode: 24.52 seconds, 40.79 it/s
+
+# Resto dataset:
+# Normal mode: 27.86 seconds, 35.89 it/s
+# Fast mode:   18.44 seconds, 54.23 it/s
+
+# Best dataset: 
+# Normal mode: 16.11 seconds, 62.07 it/s
+# Fast mode:    9.76 seconds, 102.42 it/s
 
 
-# In[ ]:
+# In[90]:
 
 
 # 1000, 1 worker: 4m18
@@ -277,52 +275,87 @@ with ProgressBar():
 # 8 workers, npart=8 : 24s
 
 
-# In[ ]:
+# In[231]:
 
 
-expand_json(addresses)
+expand_json(addresses_dask)
+addresses_dask
 
 
-# In[241]:
+# In[201]:
 
 
-addresses.json.loc[550]
+addresses_dask.method.value_counts()#.json.loc[550]
+
+
+# In[232]:
+
+
+mg = addresses_seq[["addr_key", "city", "postcode","street", "housenumber", "addr_out_street", "addr_out_number", "addr_out_postcode", "addr_out_city"]].merge(
+    addresses_dask[["addr_key", "city", "postcode","street", "housenumber", "addr_out_street", "addr_out_number", "addr_out_postcode", "addr_out_city"]], how="outer", indicator=True)
+if mg.shape[0] == addresses.shape[0]:
+    print("Same result in seq and dask run!")
+else: 
+    print("!!! Not the same result in seq and dask run!")
+    
+
+
+# In[233]:
+
+
+mg[mg._merge != "both"].sort_values("addr_key")
 
 
 # ## Batch calls (batch WS)
 
-# In[28]:
-
-
-addresses = pd.read_csv(f"../GISAnalytics/data/geocoding/kbo_1000_sample.csv")
-addresses = addresses.rename(columns={"Unnamed: 0": addr_key_field, "address": street_field})
-addresses[city_field] = ""
-addresses[country_field] =  "Belgique"
-addresses[housenbr_field] = ""
-addresses[postcode_field]=""
-addresses
-
-
-# In[187]:
-
-
-addresses
-
-
 # ### Single block
 
-# In[248]:
+# In[347]:
 
 
-# Only geocoding
-# addresses["StreetFR"] = ""
-call_ws_batch(addresses[[addr_key_field, street_field, housenbr_field, postcode_field, city_field, country_field]], mode="geo", check_result=False, structured_osm=True)
+t = datetime.now()
+
+addresses_batch = call_ws_batch(addresses[[addr_key_field, street_field, housenbr_field, postcode_field, city_field, country_field]], 
+                                mode="long", 
+                                check_result=False, 
+                                structured_osm=False)
+
+tot_time = (datetime.now() - t).total_seconds()
+print(f"{tot_time:.2f} seconds, {addresses.shape[0]/tot_time:.2f} it/s")
+# KBO dataset: 33.94 seconds, 29.46 it/s
+# Best:        24.99 seconds, 40.01 it/s
+# Resto:       38.33 seconds, 26.09 it/s
 
 
-# In[ ]:
+# In[344]:
 
 
+addresses
 
+
+# In[242]:
+
+
+mg = addresses_seq[[ "city", "postcode","street", "housenumber", "method", "addr_out_street", "addr_out_number", "addr_out_postcode", "addr_out_city", "addr_key"]].fillna("").replace("fast", "orig").merge(
+    addresses_batch[["city", "postcode","street", "housenumber", "method", "addr_out_street", "addr_out_number", "addr_out_postcode", "addr_out_city", "addr_key"]].fillna(""), how="outer", indicator=True)
+if mg[mg._merge == "both"].shape[0] == addresses.shape[0]:
+    print("Same result in seq and dask run!")
+else: 
+    print("!!! Not the same result in seq and dask run!")
+    
+
+
+# In[243]:
+
+
+mg[mg._merge != "both"]
+
+
+# In[213]:
+
+
+# Geocode + address
+call_ws_batch(addresses[[addr_key_field, street_field, housenbr_field, postcode_field, city_field, country_field]], mode="geo", check_result=False) 
 
 
 # In[249]:
@@ -332,71 +365,77 @@ call_ws_batch(addresses[[addr_key_field, street_field, housenbr_field, postcode_
 call_ws_batch(addresses[[addr_key_field, street_field, housenbr_field, postcode_field, city_field, country_field]], mode="short", check_result=False) 
 
 
-# In[ ]:
+# In[357]:
 
 
 # Geocode + address, with rejected addresses
 call_ws_batch(addresses, mode="long", with_reject=True)
 
 
-# In[ ]:
-
-
-# call_ws_batch(addresses[addresses.EntityNumber.str.startswith("0554.81")], mode="long", with_reject=True)
-
-
-# In[ ]:
-
-
-# a[a.in_house_nbr.str.upper() != a.lpost_house_nbr.str.upper()]
-
-
 # ### Batch blocs
 
-# In[250]:
+# In[353]:
 
 
-def call_ws_batch_chunks(addr_data, mode="geo", with_reject=False, check_result=True, structured_osm=False, chunk_size=100): 
-    ## TODO : find a better way with dask? It seems that map_partitions does not support function returning dataframes. 
-
-    chunks = np.array_split(addr_data, addr_data.shape[0]//chunk_size)
-
-    res= [call_ws_batch(chunk, mode=mode, 
-                        check_result=check_result, 
-                        structured_osm=structured_osm) for chunk in tqdm(chunks)]
-    df_res = pd.concat(res, sort=False)
-    return df_res
+addresses = addresses.sample(10000, replace=True)
+# addresses = addresses.reset_index(drop=True)
+# addresses["addr_key"]= addresses.index.astype(str)
 
 
-# In[251]:
+# In[352]:
 
 
-df_res = call_ws_batch_chunks(addresses, chunk_size=100, mode="short", check_result=False)
-df_res
+t = datetime.now()
+
+nb_threads=8
+
+chunks = np.array_split(addresses, nb_threads) # addresses.shape[0]//100)
+
+print(f"{len(chunks)} chunks on {nb_threads} threads")
+
+import multiprocess as mp
+
+p = mp.Pool(nb_threads)
+
+def f(chunk):
+    return call_ws_batch(chunk, mode="long", 
+                        check_result=False, 
+                        structured_osm=False)
+
+with p:
+     res= list(tqdm(p.imap(f, chunks), total=len(chunks)))
+    
+addresses_batch2 = pd.concat(res).reset_index(drop=True)
+
+tot_time = (datetime.now() - t).total_seconds()
+print(f"{tot_time:.2f} seconds, {addresses.shape[0]/tot_time:.2f} it/s")
+# KBO:    9.28 seconds, 107.72 it/s
+# Best:   6.88 seconds, 145.43 it/s
+# Resto: 11.79 seconds,  84.85 it/s
 
 
-# In[129]:
+# In[335]:
 
 
-df_res[df_res.method=="nonum"].sort_values("postcode")
+addresses_batch2
 
 
-# In[ ]:
+# In[317]:
 
 
-df_res[df_res.in_house_nbr.str.upper() != df_res.lpost_house_nbr.str.upper()]
+mg = addresses_seq[[ "city", "postcode","street", "housenumber", "method", "addr_out_street", "addr_out_number", "addr_out_postcode", "addr_out_city", "addr_key"]].fillna("").replace("fast", "orig").merge(
+    addresses_batch2[["city", "postcode","street", "housenumber", "method", "addr_out_street", "addr_out_number", "addr_out_postcode", "addr_out_city", "addr_key"]].fillna(""), how="outer", indicator=True)
+if mg[mg._merge == "both"].shape[0] == addresses.shape[0]:
+    print("Same result in seq and dask run!")
+else: 
+    print("!!! Not the same result in seq and dask run!")
+    
 
 
-# In[ ]:
+# In[318]:
 
 
-# df_res[df_res.addr_out_number.str.upper() != df_res.lpost_house_nbr.str.upper()]
-
-
-# In[ ]:
-
-
-df_res.method.value_counts()
+mg[mg._merge != "both"].sort_values("addr_key")
 
 
 # ## Comparing options
@@ -523,7 +562,7 @@ vc_values.fillna("")
 
 # # tests
 
-# In[34]:
+# In[100]:
 
 
 osm_host ="172.27.0.64:8080"
@@ -548,79 +587,15 @@ def get_osm(addr, accept_language = ""): #lg = "en,fr,nl"
         raise Exception (f"Cannot get OSM results ({osm_host}): {e}") 
 
 
-# In[55]:
-
-
-get_ipython().run_line_magic('timeit', 'get_osm("Chaussée de Tervueren 59, 1160 Auderghem")')
-
-
-# In[87]:
+# In[322]:
 
 
 get_ipython().run_line_magic('timeit', 'get_osm("Av. Fonsny 20, 1060 Bruxelles")')
 
 
-# In[49]:
-
-
-addresses["osm"] = addresses.address.progress_apply(get_osm)
-
-
-# In[45]:
-
-
-addresses["address"] = addresses[street_field]+", "+addresses[housenbr_field].fillna("")+", "                             +addresses[postcode_field]+" "+addresses[city_field]+" "+addresses[country_field]
-
-
-# In[47]:
-
-
-# addresses[addresses.address.isnull()]
-
-
-# In[124]:
+# In[323]:
 
 
 get_ipython().run_line_magic('timeit', 'call_ws_test({street_field:   "Av. Fonsny",          housenbr_field: "20",         city_field:     "Saint-Gilles",         postcode_field: "1060",         country_field:  "Belgium"}, check_result=False, structured_osm=False)')
 # res
-
-
-# In[122]:
-
-
-call_ws_test({street_field:   "Av. Fonsny",          housenbr_field: "20",         city_field:     "Saint-Gilles",         postcode_field: "1060",         country_field:  "Belgium"}, check_result=False, structured_osm=False)
-# res
-
-
-# In[257]:
-
-
-# %timeit 
-res =call_ws({street_field:   "Av. Fonsny",          housenbr_field: "20",         city_field:     "Saint-Gilles",         postcode_field: "1060",         country_field:  "Belgium"}, check_result=False, structured_osm=False)
-res
-
-
-# In[214]:
-
-
-call_ws_test({street_field:   "Av. Fonsny",          housenbr_field: "20",         city_field:     "Saint-Gilles",         postcode_field: "1060",         country_field:  "Belgium"})
-
-
-# In[215]:
-
-
-addresses.progress_apply(call_ws_test, check_result=False, structured_osm=False, axis=1)
-
-
-# In[172]:
-
-
-tm =res["timing"] 
-sum(res["timing"].values()) - res["timing"]["global"]
-
-
-# In[173]:
-
-
-tm["init_df"] + tm["t&p"] + tm["extra_hn"] + tm["format_res"]
 

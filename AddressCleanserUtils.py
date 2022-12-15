@@ -494,9 +494,9 @@ def find_house_number(street, house_number):
 
 
 def get_lpost_house_number(street):
-    t = datetime.now()
+    #t = datetime.now()
     lpost = parse_address(street)
-    update_timestats("extra_hn > lpost", t)
+    #update_timestats("extra_hn > lpost", t)
     
     housenbr = ";".join([y for (y, x) in lpost if x=="house_number"])
     boxnbr = ";".join([y for (y, x) in lpost if x=="unit"])
@@ -520,7 +520,7 @@ def add_extra_house_number(osm_addresses, addresses, street_field, housenbr_fiel
     lp = result.fillna("").apply(lambda row: get_lpost_house_number(f"{row[street_field]} {row[housenbr_field]}, {row[postcode_field]} {row[city_field]}".strip()), axis=1,  result_type ='expand')
     
     #lp= (result[street_field] + " " + result[housenbr_field]).apply(get_lpost_house_number, result_type ='expand')#, axis=1)
-    log(f"lp: {lp}")
+    #log(f"lp: {lp}")
     result[["lpost_house_nbr", "lpost_unit"]] = lp
     
     vlog("End of adding extra house number")
@@ -1285,7 +1285,7 @@ def libpostal_transformer(addresses, addr_key_field, street_field, housenbr_fiel
 
     # Make full address for libpostal
     
-    libpost_addr["lpost_full_addr_in"] = libpost_addr[street_field] + " "+ libpost_addr[housenbr_field].fillna("")+", "+                    libpost_addr[postcode_field].fillna("") + " " +libpost_addr[city_field].fillna("") +",  " +                    libpost_addr[country_field].fillna("")
+    libpost_addr["lpost_full_addr_in"] = libpost_addr[street_field] + ", "+ libpost_addr[housenbr_field].fillna("")+", "+                    libpost_addr[postcode_field].fillna("") + " " +libpost_addr[city_field].fillna("") +",  " +                    libpost_addr[country_field].fillna("")
     
     # Apply libpostal
     
