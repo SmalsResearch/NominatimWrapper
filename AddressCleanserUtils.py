@@ -856,6 +856,8 @@ def process_osm(df, osm_addr_field, addr_key_field, street_field, housenbr_field
         osm_reject["SIM_zip"]= np.NaN
         osm_reject["reject_reason"] = "tail"
         osm_results = result_head
+    
+    
       
         
     vlog("     - Done!")

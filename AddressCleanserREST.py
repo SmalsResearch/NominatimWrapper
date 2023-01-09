@@ -27,6 +27,12 @@ from datetime import datetime, timedelta
 import time
 
 
+# In[48]:
+
+
+from geopy.distance import distance
+
+
 # In[32]:
 
 
@@ -352,7 +358,7 @@ def process_address_fast(data, osm_structured=False, with_extra_house_number=Tru
         if with_extra_house_number:
             add_lpost_house_number(addr_in, match, data)
             
-            
+        t2 = datetime.now()
         match["osm_addr_in"] = addr_in
         res = {"match":  [match], 
                "reject": []}
@@ -360,8 +366,11 @@ def process_address_fast(data, osm_structured=False, with_extra_house_number=Tru
         for osm_rec in osm_res[1:]:
             r = format_osm_addr(osm_rec)
             r["reject_reason"]= "tail"
+            r["dist_to_match"] = round(distance( (r["lat"], r["lon"]), (match["lat"], match["lon"])).km, 3)
+            
             res["reject"].append(r)
         #log(res)
+        update_timestats("fast > format", t2)
         update_timestats("fast", t)
         return res
         
@@ -369,12 +378,6 @@ def process_address_fast(data, osm_structured=False, with_extra_house_number=Tru
     return None
     
     
-
-
-# In[38]:
-
-
-
 
 
 # In[ ]:

@@ -145,7 +145,7 @@ def expand_json(addresses):
 
 # ## Single address calls
 
-# In[337]:
+# In[379]:
 
 
 res=call_ws({street_field:   "Av. Fonsny",          housenbr_field: "20",         city_field:     "Saint-Gilles",         postcode_field: "1060",         country_field:  "Belgium"}, check_result=False, structured_osm=False)
@@ -154,7 +154,7 @@ res
 
 # ## Batch calls (row by row)
 
-# In[356]:
+# In[375]:
 
 
 # KBO dataset
@@ -194,7 +194,7 @@ addresses["addr_key"] = addresses.index.astype(str)
 # 
 # ### Simple way
 
-# In[338]:
+# In[380]:
 
 
 addresses_seq = addresses.copy()
@@ -223,6 +223,18 @@ expand_json(addresses_seq)
 addresses_seq
 
 
+# In[392]:
+
+
+addresses_seq.json.apply(lambda json_rec: [ r["dist_to_match"] for r in json_rec['reject']] if "reject" in json_rec else []).iloc[0:60]
+
+
+# In[394]:
+
+
+addresses_seq.iloc[6].json
+
+
 # In[150]:
 
 
@@ -237,7 +249,7 @@ addresses_seq.method.value_counts()
 addresses_dask = addresses.copy()
 
 
-# In[230]:
+# In[372]:
 
 
 t = datetime.now()
@@ -251,8 +263,9 @@ with ProgressBar():
 tot_time = (datetime.now() - t).total_seconds()
 print(f"{tot_time:.2f} seconds, {addresses_dask.shape[0]/tot_time:.2f} it/s")
 # KBO dataset:
-# Fastmode:    15.81 seconds, 63.27 it/s
 # Normal mode: 24.52 seconds, 40.79 it/s
+# Fastmode:    15.81 seconds, 63.27 it/s
+
 
 # Resto dataset:
 # Normal mode: 27.86 seconds, 35.89 it/s
@@ -275,7 +288,7 @@ print(f"{tot_time:.2f} seconds, {addresses_dask.shape[0]/tot_time:.2f} it/s")
 # 8 workers, npart=8 : 24s
 
 
-# In[231]:
+# In[370]:
 
 
 expand_json(addresses_dask)
@@ -365,7 +378,7 @@ call_ws_batch(addresses[[addr_key_field, street_field, housenbr_field, postcode_
 call_ws_batch(addresses[[addr_key_field, street_field, housenbr_field, postcode_field, city_field, country_field]], mode="short", check_result=False) 
 
 
-# In[357]:
+# In[360]:
 
 
 # Geocode + address, with rejected addresses
@@ -374,10 +387,10 @@ call_ws_batch(addresses, mode="long", with_reject=True)
 
 # ### Batch blocs
 
-# In[353]:
+# In[359]:
 
 
-addresses = addresses.sample(10000, replace=True)
+# addresses = addresses.sample(10000, replace=True)
 # addresses = addresses.reset_index(drop=True)
 # addresses["addr_key"]= addresses.index.astype(str)
 
@@ -414,10 +427,10 @@ print(f"{tot_time:.2f} seconds, {addresses.shape[0]/tot_time:.2f} it/s")
 # Resto: 11.79 seconds,  84.85 it/s
 
 
-# In[335]:
+# In[361]:
 
 
-addresses_batch2
+# addresses_batch2
 
 
 # In[317]:

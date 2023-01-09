@@ -7,7 +7,7 @@ FROM centos:7
 
 RUN yum -y update && yum -y install python3-3.6.8 python3-devel-3.6.8 gcc-4.8.5 yum-utils && package-cleanup --leaves --all
 
-RUN pip3 install Flask==1.1.2 gunicorn==20.0.4 pandas==1.1.4 numpy==1.19.4 matplotlib==3.3.3 requests==2.25.0 dask==2.30.0 dask[dataframe] toolz==0.11.1 jellyfish==0.8.2 tqdm==4.53.0 fsspec==0.8.4 IPython==7.16.1 openpyxl==3.0.1 psutil==5.7.0 bokeh==2.2.3  pillow==5.4.1
+RUN pip3 install Flask==1.1.2 gunicorn==20.0.4 pandas==1.1.4 numpy==1.19.4 matplotlib==3.3.3 requests==2.25.0 dask==2.30.0 dask[dataframe] toolz==0.11.1 jellyfish==0.8.2 tqdm==4.53.0 fsspec==0.8.4 IPython==7.16.1 openpyxl==3.0.1 psutil==5.7.0 bokeh==2.2.3  pillow==5.4.1 geopy==2.2.0
 
 # Install code
 #
