@@ -38,7 +38,8 @@ from config import (addr_key_field,
                     postcode_field,
                     city_field,
                     country_field,
-                    regex_replacements)
+                    regex_replacements,
+                    collapse_params)
 
 from base import (log, vlog, get_osm, get_osm_struct, get_photon)
 
@@ -57,14 +58,6 @@ else:
 # tqdm.pandas()
 
 
-# Mapping of nominatim results fields on our output fields
-collapse_params = {
-    "addr_out_street":   ["road", "pedestrian","footway", "cycleway", "path", "address27", "construction", "hamlet", "park"],
-    "addr_out_city"  :   ["town", "village", "city_district", "county", "city"],
-    "addr_out_number":   ["house_number"],
-    "addr_out_country":  ["country"],
-    "addr_out_postcode": ["postcode"],
-}
 
 
 timestats = {}
@@ -1292,9 +1285,9 @@ def process_address(data, check_results=True,
             form_rej = format_res(all_reject)
             update_timestats("format_res", t)
 
-            return {"match": form_res, "rejected": form_rej }
+            return {"match": form_res, "reject": form_rej }
 
-    return {"rejected": format_res(all_reject)}
+    return {"reject": format_res(all_reject)}
 
 
 def process_addresses(to_process_addresses, check_results=True,
@@ -1354,7 +1347,7 @@ def process_addresses(to_process_addresses, check_results=True,
             osm_addresses =      osm_addresses.append(osm_results, sort=False).drop_duplicates()
 
             log(f"Error during processing : {e}")
-            traceback.print_exc(file=sys.stdout)
+            traceback.print_exc(logger)
 
         chunk  = chunk[~chunk[addr_key_field].isin(osm_results[addr_key_field])].copy()
         if chunk.shape[0]==0:

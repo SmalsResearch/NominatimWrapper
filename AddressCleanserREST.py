@@ -1,5 +1,5 @@
 """
-Flask part of NominatimWrapper 
+Flask part of NominatimWrapper - DEPRECATED
 
 @author: Vandy Berten (vandy.berten@smals.be)
 
@@ -12,6 +12,9 @@ Flask part of NominatimWrapper
 # pylint: disable=line-too-long
 
 
+"""
+DEPRECATED!!!
+"""
 
 import os
 
@@ -335,7 +338,7 @@ def search():
         res["timing"] = {k: v.total_seconds()*1000 for k, v in timestats.items()}
 
     if no_reject :
-        del res["rejected"]
+        del res["reject"]
 
 
     return jsonify(res)

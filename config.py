@@ -95,3 +95,23 @@ regex_replacements = {
 
 similarity_threshold = 0.5
 
+default_transformers_sequence = [ ["orig"],
+                          ["regex[init]"],
+                          ["nonum"],
+                          ["libpostal", "regex[lpost]"],
+                          ["libpostal", "regex[lpost]", "nonum"],
+                          ["libpostal", "regex[lpost]", "photon"],
+                          ["libpostal", "regex[lpost]", "photon", "nonum"],
+                          ["photon"],
+                          ["photon", "nonum"],
+                          ["nostreet"]
+                        ]
+
+# Mapping of nominatim results fields on our output fields
+collapse_params = {
+    "addr_out_street":   ["road", "pedestrian","footway", "cycleway", "path", "address27", "construction", "hamlet", "park"],
+    "addr_out_city"  :   ["town", "village", "city_district", "county", "city"],
+    "addr_out_number":   ["house_number"],
+    "addr_out_country":  ["country"],
+    "addr_out_postcode": ["postcode"],
+}
