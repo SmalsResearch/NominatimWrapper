@@ -244,7 +244,8 @@ def fingerprint(column):
 
 
 
-# TODO : replacement seulement si dans les 2 inputs en même temps  --> Pour éviter que "Avenue Louise" et "Place Louise" aient une similarité de 100%
+# TODO : replacement seulement si dans les 2 inputs en même temps  
+# --> Pour éviter que "Avenue Louise" et "Place Louise" aient une similarité de 100%
 
 def_street_compare_removes = [r"\([A-Z.]+\)",
                           # r"[^A-Z ]+",
@@ -363,14 +364,32 @@ def street_compare(street1, street2):
     #display(pd.concat([street1, street2], axis=1))
     #display(pd.concat([street_split_a, street_split_b], axis=1))
 
-# TODO: clean and compute fingerprints beforehand, to avoid to do it several times
 
+# TODO: clean and compute fingerprints beforehand, to avoid to do it several times
+    
+    fingerprints1 = pd.DataFrame(columns = street1_split.columns)
+    for ai in range(street1_split.shape[1]):
+        street1_split[ai] = street1_split[ai].str.upper().apply(remove_accents)
+        street1_split[ai] = street1_split[ai].str.replace( r"[^A-Z ]+", " ").str.replace(" [ ]+", " ").str.strip()
+
+        fingerprints1[ai]= fingerprint(street1_split[ai])
+        
+    fingerprints2 = pd.DataFrame(columns = street2_split.columns)
+    for bi in range(street2_split.shape[1]):
+        street2_split[bi] = street2_split[bi].str.upper().apply(remove_accents)
+        street2_split[bi] = street2_split[bi].str.replace( r"[^A-Z ]+", " ").str.replace(" [ ]+", " ").str.strip()
+        fingerprints2[bi]= fingerprint(street2_split[bi])
+        
+        
+        
     street_distances = pd.DataFrame()
     for ai in range(street1_split.shape[1]):
-        str_a = street1_split[ai].str.upper().apply(remove_accents).str.replace( r"[^A-Z ]+", " ").str.replace(" [ ]+", " ").str.strip()
+        str_a = street1_split[ai]#.str.upper().apply(remove_accents)
+        # str_a = str_a.str.replace( r"[^A-Z ]+", " ").str.replace(" [ ]+", " ").str.strip()
 
         for bi in range(street2_split.shape[1]):
-            str_b = street2_split[bi].str.upper().apply(remove_accents).str.replace( r"[^A-Z ]+", " ").str.replace(" [ ]+", " ").str.strip()
+            str_b = street2_split[bi]#.str.upper().apply(remove_accents)
+            # str_b = str_b.str.replace( r"[^A-Z ]+", " ").str.replace(" [ ]+", " ").str.strip()
 
             street_distances[f"SIM_street_a{ai}b{bi}"] = _street_compare(str_a,
                                                                          str_b,
@@ -382,11 +401,11 @@ def street_compare(street1, street2):
                                                                          compare_algo=inclusion_test,
                                                                          street_compare_removes=[])
 
-            fgpta = fingerprint(str_a)
-            fgptb = fingerprint(str_b)
+            #fgpta = fingerprint(str_a)
+            #fgptb = fingerprint(str_b)
 
-            street_distances[f"FING_street_a{ai}b{bi}"] =  _street_compare(fgpta,
-                                                                           fgptb,
+            street_distances[f"FING_street_a{ai}b{bi}"] =  _street_compare(fingerprints1[ai],
+                                                                           fingerprints2[bi],
                                                                            compare_algo=levenshtein_similarity,
                                                                            street_compare_removes=def_street_compare_removes)
 
@@ -441,8 +460,6 @@ def city_compare(city1, city2, compare_algo = levenshtein_similarity):
 
     return cities.fillna("").apply(lambda row : compare_algo(row.CITY1, row.CITY2), axis=1)
 
-
-# In[ ]:
 
 
 def ignore_mismatch_keep_bests(addr_matches,

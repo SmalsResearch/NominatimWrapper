@@ -18,7 +18,7 @@ fi
 if [[ $what == *"libpostal"* ]]; then
     echo "Running libpostal REST service"
     cd /NominatimWrapper
-    gunicorn -w ${NB_LPOST_WORKERS:-1} -b 0.0.0.0:7000 LibpostalREST:app &
+    gunicorn -w ${NB_LPOST_WORKERS:-1} -b 0.0.0.0:7000 libpostal_rest:app &
 fi
 
 if [[ $what == *"wrapper"* ]]; then

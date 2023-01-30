@@ -57,7 +57,6 @@ In one command (for belgian data):
 
 Both options provide a "photon.tar.gz" which has to be put in Docker folder
 
-
     
 ### Build NominatimWrapper
 
@@ -114,7 +113,7 @@ options :
     - short: return lat/long, cleansed address (street, number, zipcode, city, country)
     - long: return all results from Nominatim
 - with_rejected=yes|no (only for batch version; default:no): return rejected records in a field "rejected" for each result
-- check_result=yes|no (default:yes): 
+- check_result=yes|no (default:no): 
     - yes: checks that result from nominatim is "close enough" from input
     - no: result the first result from nominatim, following the "transformer flow"
 - struct_osm=yes|no (default:no): 
@@ -127,7 +126,7 @@ options :
 ## Quality indicators
 
 Evaluating the quality of an anwser can be done in several ways. There are two aspects: 
-- Reliability: are we condifent about the answer?
+- Reliability: are we confident about the answer?
 - Precision: how small is the identified area? If the user provides a precise address, does the answer locates the building, the street, the city?
 
 
@@ -152,7 +151,7 @@ By default, single mode is actually converted in a batch mode with a single reco
 
 When "FASTMODE" option is set to "yes" in docker-compose file (services > wrapper > environment) and "check_result" is "no", a simple process is first tried. If Nominatim does not give any response, the full batch mode is started. Here are the steps being started (which roughly also corresponds to steps performed in batch mode): 
 
-- The following address is sent to Nominatim : "street, housenumber, postcode city, country" (is struct_osm is 'no')
+- The following address is sent to Nominatim : "street, housenumber, postcode city, country" (if struct_osm is 'no')
 - If it gives results, we format all results : 
     - "addr_out_street" receives the first not null value in the following fields: ["road", "pedestrian","footway", "cycleway", "path", "address27", "construction", "hamlet", "park"]
     - "addr_out_city": first value in ["town", "village", "city_district", "county", "city"],

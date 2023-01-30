@@ -6,7 +6,6 @@ from flask import Flask,  request,jsonify
 from postal.parser import parse_address
 
 
-
 def get_arg(argname, def_val):
     """
     Get argument 'argname' from request, with defaulf value 'def_val'

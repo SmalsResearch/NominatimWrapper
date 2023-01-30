@@ -6,26 +6,25 @@ Basic functions
 """
 
 import logging
-import sys
 import urllib
-
 import json
 
 
+import requests
+
 import pandas as pd
 
+from config import osm_host, photon_host, libpostal_host
 
-from config import osm_host, photon_host, libpostal_host, with_rest_libpostal
 
-
-logging.basicConfig(format='[%(asctime)s]  %(message)s', stream=sys.stdout)
+#logging.basicConfig(format='[%(asctime)s]  %(message)s', stream=sys.stdout)
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 
 def log(arg):
     """
-    print log message
+    Print log message
 
     Parameters
     ----------
@@ -47,7 +46,7 @@ def log(arg):
 
 def vlog(arg):
     """
-    print (verbose) log message
+    Print (verbose) log message
 
     Parameters
     ----------
@@ -205,6 +204,25 @@ def get_osm_details(place_id):
 
 
 def get_photon(addr):
+    """
+    Call Photon web service
+
+    Parameters
+    ----------
+    addr : Address
+        Address to be sent to Photon.
+
+    Raises
+    ------
+    Exception
+        In case any problem occurs with call.
+
+    Returns
+    -------
+    dict
+        Photon result.
+
+    """
     params = urllib.parse.urlencode({"q": addr})
     url = f"http://{photon_host}/api?{params}"
 
@@ -217,8 +235,25 @@ def get_photon(addr):
 
 
 def parse_address(address):
+    """
+    Call Libpostal web service
 
-    import requests
+    Parameters
+    ----------
+    address : str
+        Address to be parsed by Libpostal.
+
+    Raises
+    ------
+    Exception
+        In case any problem occurs with call.
+
+    Returns
+    -------
+    res : lst
+        Libpostal result.
+
+    """
 
     url = f"http://{libpostal_host}/parser"
     params = {"query": address}
@@ -231,4 +266,3 @@ def parse_address(address):
     res = json.loads(res.content.decode())
 
     return res
-

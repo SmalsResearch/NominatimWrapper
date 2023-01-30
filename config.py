@@ -1,13 +1,15 @@
 # pylint: disable=invalid-name
 
+"""
+Parameters
+
+@author: Vandy Berten (vandy.berten@smals.be)
+"""
 
 import logging
 
 import os
 
-
-# with_dask = True
-#check_osm_results = True
 
 check_with_transformed = True
 # If True (and check_osm_results = True): osm result is compared to output of
@@ -66,7 +68,7 @@ addr_key_field = "addr_key"
 
 regex_replacements = {
     "init": [
-        [street_field, r"^(.+)\(((AV[E .]|CH[A .]|RUE|BOU|B[LVD]+|PL[A .]|SQ|ALL|GAL)[^\)]*)\)$", 
+        [street_field, r"^(.+)\(((AV[E .]|CH[A .]|RUE|BOU|B[LVD]+|PL[A .]|SQ|ALL|GAL)[^\)]*)\)$",
                        r"\g<2> \g<1>"],
         [street_field, r"[, ]*(SN|ZN)$", ""],
         [street_field, r"' ", "'"],
@@ -109,9 +111,14 @@ default_transformers_sequence = [ ["orig"],
 
 # Mapping of nominatim results fields on our output fields
 collapse_params = {
-    "addr_out_street":   ["road", "pedestrian","footway", "cycleway", "path", "address27", "construction", "hamlet", "park"],
+    "addr_out_street":   ["road", "pedestrian","footway", "cycleway",
+                          "path", "address27", "construction", "hamlet", "park"],
     "addr_out_city"  :   ["town", "village", "city_district", "county", "city"],
     "addr_out_number":   ["house_number"],
     "addr_out_country":  ["country"],
     "addr_out_postcode": ["postcode"],
 }
+
+
+city_test_from = "Bruxelles"
+city_test_to = ["Bruxelles", "Brussels"]

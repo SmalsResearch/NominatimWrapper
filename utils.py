@@ -6,7 +6,7 @@ Functions used in AddressCleanserREST
 #!/usr/bin/env python
 # coding: utf-8
 
-# pylint: disable=invalid-name
+# pylint: disable=invalid-naame
 # pylint: disable=line-too-long
 
 
@@ -18,6 +18,7 @@ from datetime import datetime, timedelta
 import traceback
 
 import re
+import logging
 
 from geopy.distance import distance
 
@@ -49,6 +50,12 @@ from check_result_utils import (match_parent,
                                 )
 
 
+logging.basicConfig(format='[%(asctime)s]  %(message)s', stream=sys.stdout)
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
+
+
 if with_rest_libpostal:
     # Assuming LibpostalREST flask is running
     from base import parse_address
@@ -68,9 +75,9 @@ timestats = {}
 # ## Global
 
 
-def update_timestats(label, t):
+def update_timestats(label, start_time):
     """
-    Add delay since 't' (datetime.now()-t) to timestats[label]
+    Add delay since 'start_time' (datetime.now()-start_time) to timestats[label]
 
     Parameters
     ----------
@@ -86,7 +93,7 @@ def update_timestats(label, t):
     """
     if not label in timestats:
         timestats[label] = timedelta(0)
-    timestats[label] += datetime.now() - t
+    timestats[label] += datetime.now() - start_time
 
 
 def retry_with_low_place_rank(osm_results, sent_addresses,
@@ -119,7 +126,7 @@ def retry_with_low_place_rank(osm_results, sent_addresses,
 
     """
 
-    t = datetime.now()
+    start_time = datetime.now()
     vlog("Trying to improve place_rank with place_rank < 30 by cleansed house number ")
     sent_addresses_26 = osm_results[osm_results.place_rank < 30]
 
@@ -150,7 +157,7 @@ def retry_with_low_place_rank(osm_results, sent_addresses,
 
             osm_results = osm_results[~osm_results[addr_key_field].isin(osm_results_26[addr_key_field])].append(osm_results_26, sort=False)
 
-    update_timestats("t&p > process > retry_low_rank", t)
+    update_timestats("t&p > process > retry_low_rank", start_time)
 
     return osm_results
 
@@ -200,7 +207,7 @@ def add_extra_house_number(osm_addresses, addresses):
     """
     vlog("Start adding extra house number")
 
-    t = datetime.now()
+    start_time = datetime.now()
 
     if "addr_out_number" not in osm_addresses:
         return osm_addresses
@@ -213,7 +220,7 @@ def add_extra_house_number(osm_addresses, addresses):
     result[["lpost_house_nbr", "lpost_unit"]] = lp
 
     vlog("End of adding extra house number")
-    update_timestats("extra_hn", t)
+    update_timestats("extra_hn", start_time)
 
     return result[np.concatenate([osm_addresses.keys(), ["in_house_nbr", "lpost_house_nbr", "lpost_unit"]])]
 
@@ -247,7 +254,7 @@ def transform_and_process(to_process_addresses, transformers,
         statistics.
     """
 
-    t = datetime.now()
+    start_time = datetime.now()
     method = "+".join(transformers)
 
 
@@ -283,9 +290,9 @@ def transform_and_process(to_process_addresses, transformers,
     vlog(sent_addresses.head())
     vlog(sent_addresses.shape)
 
-    update_timestats("t&p > transformer", t)
+    update_timestats("t&p > transformer", start_time)
 
-    t = datetime.now()
+    start_time = datetime.now()
     osm_results, rejected = process_osm(sent_addresses,
                                         osm_addr_field="osm_addr_in",
                                         check_results=check_results,
@@ -296,7 +303,7 @@ def transform_and_process(to_process_addresses, transformers,
         osm_results = retry_with_low_place_rank(osm_results, sent_addresses,
                                                 check_results=check_results)
 
-    update_timestats("t&p > process", t)
+    update_timestats("t&p > process", start_time)
     osm_results["method"] = method
     rejected["method"] = method
 
@@ -358,7 +365,7 @@ def process_osm(df, osm_addr_field, accept_language="",
               appart from input
     """
 
-    t = datetime.now()
+    start_time = datetime.now()
 
     if df.shape[0] == 0:
         return pd.DataFrame(columns=[osm_addr_field, addr_key_field]), \
@@ -390,9 +397,9 @@ def process_osm(df, osm_addr_field, accept_language="",
     else:
         to_process[osm_res_field] = to_process[[osm_addr_field, "accept_language"]].apply(lambda row: get_osm(row[osm_addr_field], row["accept_language"]), axis=1)
 
-    update_timestats("t&p > process > osm", t)
+    update_timestats("t&p > process > osm", start_time)
 
-    t = datetime.now()
+    start_time = datetime.now()
     vlog("     - Parse & split osm results ...")
 
     osm_results = osm_parse_and_split(to_process,
@@ -405,7 +412,7 @@ def process_osm(df, osm_addr_field, accept_language="",
 
     vlog(f"     - OSM got {osm_results.shape[0]} results for {osm_results[addr_key_field].nunique()} addresses")
 
-    update_timestats("t&p > process > osm_post", t)
+    update_timestats("t&p > process > osm_post", start_time)
 
     if osm_results.shape[0] == 0:
 
@@ -413,7 +420,7 @@ def process_osm(df, osm_addr_field, accept_language="",
 
     if check_results:
 
-        t = datetime.now()
+        start_time = datetime.now()
 
         vlog("     - Keep relevant results")
         osm_results, osm_reject = osm_keep_relevant_results(osm_results, df)
@@ -425,7 +432,7 @@ def process_osm(df, osm_addr_field, accept_language="",
 
 
 
-        update_timestats("t&p > process > checker", t)
+        update_timestats("t&p > process > checker", start_time)
 
     else:
         vlog("    - Do not check OSM results, just keep the first result for each request.")
@@ -474,7 +481,7 @@ def osm_parse_and_split(df, osm_res_field,
     """
 
     osm_result_item_field = "osm_item_result"
-    t = datetime.now()
+    start_time = datetime.now()
 
     df = df.set_index([osm_addr_field])
 
@@ -513,7 +520,7 @@ def osm_parse_and_split(df, osm_res_field,
 
     osm_results = osm_results.reset_index().rename(columns={"level_1": "osm_order"})
 
-    update_timestats("t&p > process > osm_post > parse&split", t)
+    update_timestats("t&p > process > osm_post > parse&split", start_time)
 
     return osm_results
 
@@ -636,8 +643,8 @@ def apply_transformers(addresses, transformers, check_results):
             pass # Don't do anything, keep original values
 
         elif re.match(r"regex\[[a-z]+\]", transformer):
-            gr = re.match(r"regex\[([a-z]+)\]", transformer)
-            regex_key = gr.groups(0)[0]
+            grp = re.match(r"regex\[([a-z]+)\]", transformer)
+            regex_key = grp.groups(0)[0]
 
             transformed_addresses =  regex_transformer(transformed_addresses,
                                                        regex_key = regex_key)
@@ -757,12 +764,12 @@ def photon_parse_and_split(res, addr_field, photon_col):
 
     res = res.set_index([addr_field])
 
-    s = res.photon_parsed.apply(pd.Series)
+    ser = res.photon_parsed.apply(pd.Series)
 
-    if s.shape[0] == 0 or s.shape[1] == 0:
+    if ser.shape[0] == 0 or ser.shape[1] == 0:
         return pd.DataFrame(columns = [addr_field])
 
-    photon_results = pd.DataFrame(s.stack()).rename(columns = {0:photon_col})
+    photon_results = pd.DataFrame(ser.stack()).rename(columns = {0:photon_col})
 
     for item in photon_results[photon_col].apply(lambda x: x.keys())[0]:
         photon_results[item] = photon_results[photon_col].apply(lambda x, it=item: x[it] if it in x else None)
@@ -779,10 +786,10 @@ def photon_parse_and_split(res, addr_field, photon_col):
     for addr_item in addr_items:
         photon_results[prefix+addr_item] = photon_results[photon_col].apply(lambda x, ad_it=addr_item: x["properties"][ad_it] if ad_it in x["properties"] else None)
 
-    for f in [photon_street_field, photon_postcode_field, photon_city_field, photon_country_field]:
-        if f not in photon_results:
-            vlog(f"Photon: adding field {f}")
-            photon_results[f] = ""
+    for fld in [photon_street_field, photon_postcode_field, photon_city_field, photon_country_field]:
+        if fld not in photon_results:
+            vlog(f"Photon: adding field {fld}")
+            photon_results[fld] = ""
 
     if photon_name_field in photon_results:
         photon_results[photon_street_field] = photon_results[photon_street_field].replace("", pd.NA).fillna(photon_results[photon_name_field])
@@ -846,7 +853,7 @@ def photon_transformer(addresses, check_results):
         Transformed version of "addresses.
 
     """
-    t = datetime.now()
+    start_time = datetime.now()
     photon_addr = addresses[[addr_key_field, street_field, housenbr_field,
                              postcode_field, city_field, country_field]].copy()
 
@@ -875,7 +882,7 @@ def photon_transformer(addresses, check_results):
     fields_out    = [field_in      for field_in, field_photon in fields]
     fields_photon = [field_photon  for field_in, field_photon in fields]
 
-    update_timestats("'t&p > transformer > photon", t)
+    update_timestats("'t&p > transformer > photon", start_time)
 
     return photon_res_sel[[addr_key_field] + fields_photon].rename(columns= {field_photon: field_in for field_in, field_photon in fields})[[addr_key_field] + fields_out]
 
@@ -905,7 +912,7 @@ def libpostal_transformer(addresses,
      pd.DataFrame
          Transformed version of "addresses.
     """
-    t = datetime.now()
+    start_time = datetime.now()
 
     libpost_addr = addresses[[addr_key_field, street_field, housenbr_field, postcode_field, city_field, country_field]].copy()
 
@@ -945,7 +952,7 @@ def libpostal_transformer(addresses,
     fields_out    = [field_in      for field_in, field_lpost in fields]
     fields_lpost  = [field_lpost   for field_in, field_lpost in fields]
 
-    update_timestats("'t&p > transformer > libpostal", t)
+    update_timestats("'t&p > transformer > libpostal", start_time)
 
     return libpost_addr[[addr_key_field] + fields_lpost].rename(columns= {field_lpost: field_in for field_in, field_lpost in fields})[[addr_key_field] + fields_out]
 
@@ -1042,9 +1049,9 @@ def get_row_dict(row):
             list(filter(lambda x: x.startswith("SIM"), row.index))
     res =  {}
 
-    for f in to_copy_field:
-        if f in row:
-            res[f] = row[f]
+    for fld in to_copy_field:
+        if fld in row:
+            res[fld] = row[fld]
 
     return res
 
@@ -1085,9 +1092,9 @@ def format_osm_addr(osm_rec):
     """
     res = {"method":"fast"}
 
-    for f in ["display_name", "place_id", "lat","lon", "place_rank"]:
-        if f in osm_rec:
-            res[f] = osm_rec[f]
+    for fld in ["display_name", "place_id", "lat","lon", "place_rank"]:
+        if fld in osm_rec:
+            res[fld] = osm_rec[fld]
 
     for out_field, in_fields in collapse_params.items():
         res[out_field] = ""
@@ -1146,7 +1153,7 @@ def process_address_fast(data, osm_structured=False,
         If success, dictionary with result. None otherwise.
 
     """
-    t = datetime.now()
+    start_time = datetime.now()
 
 
     addr_in = f"{data['street']}, {data['housenumber']}, {data['postcode']} {data['city']}, {data['country']}"
@@ -1160,13 +1167,13 @@ def process_address_fast(data, osm_structured=False,
     else:
         osm_res = get_osm(addr_in)
 
-    update_timestats("fast > osm", t)
+    update_timestats("fast > osm", start_time)
 
     if len(osm_res) >0:
         match = format_osm_addr(osm_res[0])
 
         if retry_with_low_rank and match["place_rank"] < 30: # Try to clean housenumber to see if we can improved placerank
-            t2 = datetime.now()
+            start_timet2 = datetime.now()
             cleansed_housenbr = re.match("^([0-9]+)", data['housenumber'])
             if cleansed_housenbr:
                 cleansed_housenbr = cleansed_housenbr[0]
@@ -1184,29 +1191,29 @@ def process_address_fast(data, osm_structured=False,
                     if with_extra_house_number:
                         add_lpost_house_number(addr_in, osm_res_retry["match"][0], data)
 
-                    update_timestats("fast > retry", t2)
+                    update_timestats("fast > retry", start_timet2)
                     return osm_res_retry
 
         if with_extra_house_number:
             add_lpost_house_number(addr_in, match, data)
 
-        t2 = datetime.now()
+        start_time2 = datetime.now()
         match["osm_addr_in"] = addr_in
         res = {"match":  [match],
                "reject": []}
 
         for osm_rec in osm_res[1:]:
-            r = format_osm_addr(osm_rec)
-            r["reject_reason"]= "tail"
-            r["dist_to_match"] = round(distance( (r["lat"], r["lon"]), (match["lat"], match["lon"])).km, 3)
+            rec = format_osm_addr(osm_rec)
+            rec["reject_reason"]= "tail"
+            rec["dist_to_match"] = round(distance( (rec["lat"], rec["lon"]), (match["lat"], match["lon"])).km, 3)
 
-            res["reject"].append(r)
+            res["reject"].append(rec)
 
-        update_timestats("fast > format", t2)
-        update_timestats("fast", t)
+        update_timestats("fast > format", start_time2)
+        update_timestats("fast", start_time)
         return res
 
-    update_timestats("fast", t)
+    update_timestats("fast", start_time)
     return None
 
 
@@ -1242,7 +1249,7 @@ def process_address(data, check_results=True,
     """
 
     vlog(f"Will process {data}")
-    t = datetime.now()
+    #start_time = datetime.now()
 
     if transformers_sequence is None:
         transformers_sequence  = [["orig"]]
@@ -1264,15 +1271,15 @@ def process_address(data, check_results=True,
         vlog ("--------------------------")
 
         try :
-            t = datetime.now()
+            start_time = datetime.now()
             osm_results, rejected, step_stats = transform_and_process(to_process_addresses, transformers,
                                                                       check_results=check_results,
                                                                       osm_structured=osm_structured)
-            update_timestats("t&p", t)
-        except Exception as e:
-            log(f"Error during processing : {e}")
+            update_timestats("t&p", start_time)
+        except Exception as exc:
+            log(f"Error during processing : {exc}")
             traceback.print_exc(file=sys.stdout)
-            return {"error": str(e)}
+            return {"error": str(exc)}
 
         all_reject = all_reject.append(rejected, sort=False)
 
@@ -1280,10 +1287,10 @@ def process_address(data, check_results=True,
         if osm_results.shape[0] > 0:
             if with_extra_house_number :
                 osm_results = add_extra_house_number(osm_results, to_process_addresses)
-            t = datetime.now()
+            start_time = datetime.now()
             form_res =  format_res(osm_results)
             form_rej = format_res(all_reject)
-            update_timestats("format_res", t)
+            update_timestats("format_res", start_time)
 
             return {"match": form_res, "reject": form_rej }
 
@@ -1341,12 +1348,12 @@ def process_addresses(to_process_addresses, check_results=True,
             osm_addresses =      osm_addresses.append(osm_results, sort=False).drop_duplicates()
             rejected_addresses = rejected_addresses.append(rejected, sort=False).drop_duplicates()
 
-        except Exception as e:
+        except Exception as exc:
             osm_results = chunk[[addr_key_field]]
             osm_results["method"] = "error on " + ";".join(transformers)
             osm_addresses =      osm_addresses.append(osm_results, sort=False).drop_duplicates()
 
-            log(f"Error during processing : {e}")
+            log(f"Error during processing : {exc}")
             traceback.print_exc(logger)
 
         chunk  = chunk[~chunk[addr_key_field].isin(osm_results[addr_key_field])].copy()
