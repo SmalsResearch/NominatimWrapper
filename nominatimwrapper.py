@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+# coding: utf-8
+
 """
 Flask part of NominatimWrapper
 
@@ -5,13 +8,13 @@ Flask part of NominatimWrapper
 
 """
 
-#!/usr/bin/env python
-# coding: utf-8
 
 
 # pylint: disable=line-too-long
 
-
+# TODO :
+# - SSL ?
+# - "namespace" is empty 
 
 import os
 
@@ -42,7 +45,7 @@ from utils import (parse_address,
                                   addr_key_field, street_field, housenbr_field,
                                   postcode_field, city_field, country_field,
                                   process_address, process_addresses,
-                                  update_timestats, timestats)
+                                  update_timestats, timestats, to_camel_case)
 
 
 from config import osm_host, libpostal_host, photon_host, default_transformers_sequence, city_test_from, city_test_to
@@ -266,7 +269,9 @@ api = Api(app,
           version='1.0',
           title='NominatimWrapper API',
           description='A geocoder built upon Nominatim',
-          doc='/doc'
+          doc='/doc',
+          prefix='/REST/nominatimWrapper/v0.1'
+
 )
 
 namespace = api.namespace(
@@ -284,24 +289,24 @@ single_parser.add_argument('postcode',    type=str, help='Postal code')
 single_parser.add_argument('country',     type=str, help='Country name')
 single_parser.add_argument('address',     type=str, help='Full address in a single field')
 
-single_parser.add_argument('with_rejected',
+single_parser.add_argument('withRejected',
                            type=str,
                            choices=('yes', 'no'),
                            help='if "yes", rejected results are returned (default: "no")')
-single_parser.add_argument('check_result',
+single_parser.add_argument('checkResult',
                            type=str,
                            choices=('yes', 'no'),
                            help='if "yes", will "double check" OSM results (default: "no")')
-single_parser.add_argument('struct_osm',
+single_parser.add_argument('structOsm',
                            type=str,
                            choices=('yes', 'no'),
                            help='if "yes", will call the structured version of OSM (default: "no")')
-single_parser.add_argument('extra_house_nbr',
+single_parser.add_argument('extraHouseNbr',
                            type=str,
                            choices=('yes', 'no'),
-                           help='if "yes", will call libpostal on all addresses to get the house number  (default: "yes")')
+                           help='if "yes", will call libpostal on all addresses to get the house number (default: "yes")')
 
-@api.route('/search/')
+@api.route('/search')
 class Search(Resource):
     """ Single address geocoding"""
     @namespace.expect(single_parser)
@@ -334,33 +339,33 @@ class Search(Resource):
 
         - match: a single result, with the following fields:
             - Results comming straight from Nominatim:
-                - place_id
+                - placeId
                 - lat
                 - lon
-                - display_name
-                - place_rank
+                - displayName
+                - placeRank
              - Structured address:
-                - addr_out_street: first non null value in ["road", "pedestrian","footway", "cycleway", "path", "address27", "construction", "hamlet", "park"]
-                - addr_out_number: house_number
-                - addr_out_postcode: postcode
-                - addr_out_city: first non null value in ["town", "village", "city_district", "county", "city"],
-                - addr_out_country: country
-                - addr_out_others: concatenate all values which were not picked by one of the above item
-             - Check results indicators (if check_result='yes'):
-                - SIM_street_which
-                - SIM_street
-                - SIM_city
-                - SIM_zip
-                - SIM_house_nbr
+                - addrOutStreet: first non null value in ["road", "pedestrian","footway", "cycleway", "path", "address27", "construction", "hamlet", "park"]
+                - addrOutNumber: house_number
+                - addrOutPostcode: postcode
+                - addrOutCity: first non null value in ["town", "village", "city_district", "county", "city"],
+                - addrOutCountry: country
+                - addrOutOthers: concatenate all values which were not picked by one of the above item
+             - Check results indicators (if checkResult='yes'):
+                - SIMStreetWhich
+                - SIMStreet
+                - SIMCity
+                - SIMZip
+                - SIMHouseNbr
              - Other information:
                 - method: which transformation methods were used before sending the address to Nominatim. If the address was found without any transformation, will be "orig" (or "fast" if FASTMODE is activated at server level)
-                - osm_addr_in: what address (after possibly some sequence of transformation) is actually sent to Nominatim
-                - in_house_nbr:  house number given in input
-                - lpost_house_nbr: "housenumber" provided by libpostal receiving concatenation of street and house number (from input)
-                - lpost_unit: "unit"  provided by libpostal receiving concatenation of street and house number (from input)
+                - osmAddrIn: what address (after possibly some sequence of transformation) is actually sent to Nominatim
+                - inHouseNbr:  house number given in input
+                - lpostHouseNbr: "housenumber" provided by libpostal receiving concatenation of street and house number (from input)
+                - lpostUnit: "unit"  provided by libpostal receiving concatenation of street and house number (from input)
         - reject: list of rejected results, with most of the same fields, with additionnal fields:
-             - reject_reason: 'mismatch" or "tail"
-             - dist_to_match: distance (in kilometer) to the result given in "match"
+             - rejectReason: 'mismatch" or "tail"
+             - distToMatch: distance (in kilometer) to the result given in "match"
 
 
         """
@@ -383,29 +388,29 @@ class Search(Resource):
 
 
         error_msg = "Invalid value for '%s'. Possible values are 'yes' or 'no'"
-        with_rejected = get_yesno_arg("with_rejected", "no")
+        with_rejected = get_yesno_arg("withRejected", "no")
         if with_rejected is None:
-            return [{"error": error_msg%('with_rejected')}], 400
+            return [{"error": error_msg%('withRejected')}], 400
 
-        check_results = get_yesno_arg("check_result", "no")
+        check_results = get_yesno_arg("checkResult", "no")
         if check_results is None:
-            return [{"error": error_msg%('check_result')}], 400
+            return [{"error": error_msg%('checkResult')}], 400
 
-        osm_structured = get_yesno_arg("struct_osm", "no")
+        osm_structured = get_yesno_arg("structOsm", "no")
         if osm_structured is None:
-            return [{"error": error_msg%('struct_osm')}], 400
+            return [{"error": error_msg%('structOsm')}], 400
 
-        with_extra_house_number =  get_yesno_arg("extra_house_nbr", "yes")
+        with_extra_house_number =  get_yesno_arg("extraHouseNbr", "yes")
         if with_extra_house_number is None:
-            return [{"error": error_msg%('extra_house_nbr')}], 400
+            return [{"error": error_msg%('extraHouseNbr')}], 400
 
         if address != "":
             if len(used_fields)>0:
                 return [{"error": "Field 'address' cannot be used together with fields "+";".join(used_fields)}],  400
             if osm_structured :
-                return [{"error": "Field 'address' cannot be used together with fields 'struct_osm=yes'"}],   400
+                return [{"error": "Field 'address' cannot be used together with fields 'structOsm=yes'"}],   400
             if check_results :
-                return [{"error": "Field 'address' cannot be used together with fields 'check_result=yes'"}], 400
+                return [{"error": "Field 'address' cannot be used together with fields 'checkResult=yes'"}], 400
 
             data[street_field] = address
 
@@ -436,9 +441,12 @@ class Search(Resource):
         if not with_rejected and "reject" in res:
             del res["reject"]
 
+        if "error" in res:
+            return res, 500
+            
         return_code = 200 if ("match" in res and len(res["match"])>0) or ("reject" in res and len(res["reject"])>0) else 204
 
-        return res, return_code
+        return to_camel_case(res), return_code
 
 
 
@@ -464,12 +472,13 @@ Selection of columns in the ouput (default: short):
 - short: return lat/long, cleansed address (street, number, zipcode, city, country)
 - long: return all results from Nominatim""")
 
-batch_parser.add_argument('with_rejected',      type=str, choices=('yes', 'no'), help='if "yes", rejected results are returned (default: "no")')
-batch_parser.add_argument('check_result',       type=str, choices=('yes', 'no'), help='if "yes", will "double check" OSM results (default: "no")')
-batch_parser.add_argument('struct_osm',         type=str, choices=('yes', 'no'), help='if "yes", will call the structured version of OSM (default: "no")')
-batch_parser.add_argument('extra_house_nbr',    type=str, choices=('yes', 'no'), help='if "yes", will call libpostal on all addresses to get the house number  (default: "yes")')
+batch_parser.add_argument('withRejected',      type=str, choices=('yes', 'no'), help='if "yes", rejected results are returned (default: "no")')
+batch_parser.add_argument('checkResult',       type=str, choices=('yes', 'no'), help='if "yes", will "double check" OSM results (default: "no")')
+batch_parser.add_argument('structOsm',         type=str, choices=('yes', 'no'), help='if "yes", will call the structured version of OSM (default: "no")')
+batch_parser.add_argument('extraHouseNbr',    type=str, choices=('yes', 'no'), help='if "yes", will call libpostal on all addresses to get the house number  (default: "yes")')
 
-@api.route('/batch/', methods=['POST'])
+
+@api.route('/batch', methods=['POST'])
 class Batch(Resource):
     """Batch geocoding"""
 
@@ -491,39 +500,39 @@ class Batch(Resource):
     - Results coming straight from Nominatim:
         - lat
         - lon
-        - place_rank
+        - placeRank
     - Other fields:
-        - addr_key: from input
+        - addrKey: from input
         - method : which transformation methods were used before sending the address to Nominatim. If the address was found without any transformation, will be "orig" (or "fast")
 - In 'short' mode, additional fields:
     - Results comming straight from Nominatim:
-        - place_id
+        - placeId
     - Structured address:
-        - addr_out_street: first non null value in ["road", "pedestrian","footway", "cycleway", "path", "address27", "construction", "hamlet", "park"]
-        - addr_out_number: house_number
-        - addr_out_postcode: postcode
-        - addr_out_city: first non null value in ["town", "village", "city_district", "county", "city"],
-        - addr_out_country: country
+        - addrOutStreet: first non null value in ["road", "pedestrian","footway", "cycleway", "path", "address27", "construction", "hamlet", "park"]
+        - addrOutNumber: house_number
+        - addrOutPostcode: postcode
+        - addrOutCity: first non null value in ["town", "village", "city_district", "county", "city"],
+        - addrOutCountry: country
     - Other fields:
-        - in_house_nbr:  house number given in input
-        - lpost_house_nbr: "housenumber" provided by libpostal receiving concatenation of street and house number (from input)
-        - lpost_unit: "unit"  provided by libpostal receiving concatenation of street and house number (from input)
+        - inHouseNbr:  house number given in input
+        - lpostHouseNbr: "housenumber" provided by libpostal receiving concatenation of street and house number (from input)
+        - lpostUnit: "unit"  provided by libpostal receiving concatenation of street and house number (from input)
 - In 'long' mode, additional fields:
     - All columns present in input will appear in output
     - display_name
-    - Check results indicators (if check_result='yes'):
-        - SIM_street_which
-        - SIM_street
-        - SIM_city
-        - SIM_zip
-        - SIM_house_nbr
-    - addr_out_others: concatenate all values which were not picked by one of the 'addr_out_*' items
-    - osm_addr_in: what address (after possibly some sequence of transformation) is actually sent to Nominatim
-    - retry_on_26: If place_rank in match record is below 30 and housenumber (in input) contains other characters than digits, we retry to call Nominatim by only considering the first digits of housenumber: "30A","30.3", "30 bt 2", "30-32" become "30". If it gives a result with place_rank = 30, we keep it (in this case, a "cleansed_house_nbr" appears in the output, with "30" in this example), and this field is set to "True"
+    - Check results indicators (if checkResult='yes'):
+        - SIMStreetWhich
+        - SIMStreet
+        - SIMCity
+        - SIMZip
+        - SIMHouseNbr
+    - addrOutOthers: concatenate all values which were not picked by one of the 'addrOut*' items
+    - osmAddrIn: what address (after possibly some sequence of transformation) is actually sent to Nominatim
+    - retryOn26: If placeRank in match record is below 30 and housenumber (in input) contains other characters than digits, we retry to call Nominatim by only considering the first digits of housenumber: "30A","30.3", "30 bt 2", "30-32" become "30". If it gives a result with place_rank = 30, we keep it (in this case, a "cleansed_house_nbr" appears in the output, with "30" in this example), and this field is set to "True"
 
 
-If "with_rejected=yes", an additional field with all rejected records is added, with the same field selection as above, according to "mode", plus one additional fields, 'reject_reason'. Equal to:
-- 'mismatch' if 'check_result=yes', and this result is "too far away" from the original value
+If "withRejected=yes", an additional field with all rejected records is added, with the same field selection as above, according to "mode", plus one additional fields, 'reject_reason'. Equal to:
+- 'mismatch' if 'checkResult=yes', and this result is "too far away" from the original value
 - 'tail' if it was just not the first record.
 
 
@@ -536,21 +545,21 @@ If "with_rejected=yes", an additional field with all rejected records is added, 
             return [{"error": f"Invalid mode {mode}"}], 400
 
         error_msg = "Invalid value for '%s'. Possible values are 'yes' or 'no'"
-        with_rejected = get_yesno_arg("with_rejected", "no")
+        with_rejected = get_yesno_arg("withRejected", "no")
         if with_rejected is None:
-            return [{"error": error_msg%('with_rejected')}], 400
+            return [{"error": error_msg%('withRejected')}], 400
 
-        check_results = get_yesno_arg("check_result", "no")
+        check_results = get_yesno_arg("checkResult", "no")
         if check_results is None:
-            return [{"error": error_msg%('check_result')}], 400
+            return [{"error": error_msg%('checkResult')}], 400
 
-        osm_structured = get_yesno_arg("struct_osm", "no")
+        osm_structured = get_yesno_arg("structOsm", "no")
         if osm_structured is None:
-            return [{"error": error_msg%('struct_osm')}], 400
+            return [{"error": error_msg%('structOsm')}], 400
 
-        with_extra_house_number =  get_yesno_arg("extra_house_nbr", "yes")
+        with_extra_house_number =  get_yesno_arg("extraHouseNbr", "yes")
         if with_extra_house_number is None:
-            return [{"error": error_msg%('extra_house_nbr')}], 400
+            return [{"error": error_msg%('extraHouseNbr')}], 400
 
         if len(list(request.files.keys()))==0:
             return [{"error": "No file data was provided"}], 400
@@ -585,7 +594,7 @@ If "with_rejected=yes", an additional field with all rejected records is added, 
         res, rejected_addresses = process_addresses(df,
                                                     check_results=check_results,
                                                     osm_structured=osm_structured,
-                                                    with_extra_house_number= with_extra_house_number,
+                                                    with_extra_house_number= with_extra_house_number and mode != "geo",
                                                     transformers_sequence=transformers_sequence)
 
 
@@ -613,7 +622,7 @@ If "with_rejected=yes", an additional field with all rejected records is added, 
 
 
             if with_rejected:
-                rejected_rec = rejected_addresses.groupby(addr_key_field).apply(lambda rec: remove_empty_values(rec.to_dict(orient="records")) ).rename("reject").reset_index()
+                rejected_rec = rejected_addresses.groupby(addr_key_field).apply(lambda rec: remove_empty_values( rec.to_dict(orient="records")) ).rename("reject").reset_index()
                 res = res.merge(rejected_rec, how="outer")
                 res["reject"] = res["reject"].apply(lambda rec: rec if isinstance(rec, list) else [])
 
@@ -625,6 +634,78 @@ If "with_rejected=yes", an additional field with all rejected records is added, 
 
         log("Output: \n"+res.iloc[:, 0:9].to_string(max_rows=9))
 
-        res = res.to_dict(orient="records")
+        res = to_camel_case(res.to_dict(orient="records"))
 
-        return res
+        return res, 200
+    
+    
+
+@api.route('/health', methods=['GET'])
+class Health(Resource):
+
+    @namespace.response(500, 'Internal Server error')
+    @namespace.response(503, 'Service is "DOWN"')
+    @namespace.response(200, 'Service is "UP" or "DEGRADED"')
+    
+    def get(self):
+        """Health status
+
+        Returns
+        -------
+        - {'status': 'DOWN'}: Nominatim server does not answer (or gives an unexpected answer)
+        - {'status': 'DEGRADED'}: Either Libpostal or Photon is down (or gives an unexpected answer). Geocoding is still possible as long as it does not requires one of those transformer
+        - {'status': 'UP'}: Service works correctly 
+
+        """
+        # Checking Nominatim
+        
+        try:
+            osm = get_osm(city_test_from)
+            if not city_test_to[0] in osm[0]["namedetails"]["name:fr"]:
+
+                return {"status": "DOWN",
+                        "details": {"errorMessage": "Nominatim server answers, but gives an unexpected answer",
+                                "details": f"Nominatim answer: {osm}"}}, 503
+
+        except Exception as exc:
+            
+            log("Nominatim not up & running")
+            log(f"Nominatim host: {osm_host}")
+            
+            return {"status": "DOWN",
+                    "details": {"errorMessage": "Nominatim server does not answer",
+                                "details": f"{exc}"}}, 503
+
+        # Checking Libpostal
+        
+        try:
+            lpost = parse_address(city_test_from)
+            if len(lpost) < 1 or len(lpost[0]) < 1 or lpost[0][0].lower() != city_test_to[0].lower():
+                 return {"status": "DEGRADED",
+                         "details": {"errorMessage": "Libpostal server answers, but gives an unexpected answer",
+                                     "details": f"Libpostal answer: {lpost}"}}, 200
+
+        except Exception as exc:
+            log("Libpostal not up & running ")
+
+            return {"status": "DEGRADED",
+                    "details": {"errorMessage": "Libpostal server does not answer",
+                                "details": f"{exc}"}}, 200
+
+        # Checking Photon
+        
+        try:
+            phot=""
+            phot = get_photon(city_test_from)
+            if not city_test_to[0] in phot["features"][0]["properties"]["name"] and \
+               not city_test_to[1] in phot["features"][0]["properties"]["name"]:
+                return {"status": "DEGRADED",
+                        "details": {"errorMessage": "Photon server answers, but gives an unexpected answer",
+                                "details": f"Photon answer: {phot}"}}, 200
+        except Exception as exc:
+            return {"status": "DEGRADED",
+                "details": {"errorMessage": "Photon server does not answer",
+                        "details": f"{exc}"}}, 200
+        
+        return {"status": "UP"}, 200
+    

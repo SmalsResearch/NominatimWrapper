@@ -95,6 +95,35 @@ def update_timestats(label, start_time):
         timestats[label] = timedelta(0)
     timestats[label] += datetime.now() - start_time
 
+def to_camel_case(data):
+    """
+    Convert a snake_case object to a camelCase.
+    If d is a string, convert the string
+    If d is a dict, convert all keys, recursively (i.e., values are dict or list), but not simple values
+    If d is a list, convert all objects in the list
+    
+    Parameters
+    ----------
+    data: str, dict or list
+        Object to camelize
+        
+    Returns
+    -------
+    Object of the same structure as data, but where :
+    - dictionary keys have been camelized if data is a dict
+    - input string has been camelized if data is a string 
+    
+    """
+    
+    
+    if isinstance(data, str):
+        return re.sub(r"(_)([a-z])", lambda m: m.group(2).upper(),  data)
+    elif isinstance(data, dict):
+        return { to_camel_case(key): to_camel_case(item) if (isinstance(item, dict) or isinstance(item, list)) else item for key, item in data.items()}
+    elif isinstance(data, list):
+        return [ to_camel_case(item)  for item in data] 
+    else:
+        return data
 
 def retry_with_low_place_rank(osm_results, sent_addresses,
                               check_results=True, osm_structured=False):
@@ -139,7 +168,15 @@ def retry_with_low_place_rank(osm_results, sent_addresses,
 
         sent_addresses_26[housenbr_field] = sent_addresses_26[housenbr_field].fillna("").astype(str).str.extract("^([0-9]+)")[0]
 
-        sent_addresses_26["osm_addr_in"] =   sent_addresses_26[street_field  ].fillna("") + ", "+ sent_addresses_26[housenbr_field].fillna("") +", " +                                              sent_addresses_26[postcode_field].fillna("") + " " +sent_addresses_26[city_field    ].fillna("") +", "+                                              sent_addresses_26[country_field].fillna("")
+        sent_addresses_26["osm_addr_in"] =   sent_addresses_26[street_field  ].fillna("") + ", "+\
+                sent_addresses_26[housenbr_field].fillna("") +", " + \
+                sent_addresses_26[postcode_field].fillna("") +" " +\
+                sent_addresses_26[city_field    ].fillna("") +", "+\
+                sent_addresses_26[country_field].fillna("")
+        
+        sent_addresses_26["osm_addr_in"]= sent_addresses_26["osm_addr_in"].apply(clean_addr_in)
+        
+        
 
         vlog(" ; ".join([f"rank {r}: {c}" for r, c in sent_addresses_26.place_rank.value_counts().iteritems()]))
         #print(osm_results_26.place_rank.value_counts())
@@ -176,10 +213,17 @@ def get_lpost_house_number(street):
     [house number, box number].
 
     """
-    lpost = parse_address(street)
+    
+    try:
+        lpost = parse_address(street)
 
-    housenbr = ";".join([y for (y, x) in lpost if x=="house_number"])
-    boxnbr = ";".join([y for (y, x) in lpost if x=="unit"])
+
+        housenbr = ";".join([y for (y, x) in lpost if x=="house_number"])
+        boxnbr = ";".join([y for (y, x) in lpost if x=="unit"])
+    except Exception as exc: 
+        log(f"Error during processing of 'get_lpost_house_number': {exc}")
+        housenbr = 'error during Libpostal processing'
+        boxnbr   = 'error during Libpostal processing'
 
     return [housenbr, boxnbr]
 
@@ -214,17 +258,28 @@ def add_extra_house_number(osm_addresses, addresses):
 
     result = osm_addresses.merge(addresses)
     result["in_house_nbr"] = result[housenbr_field]
-
+    
     lp = result.fillna("").apply(lambda row: get_lpost_house_number(f"{row[street_field]} {row[housenbr_field]}, {row[postcode_field]} {row[city_field]}".strip()), axis=1,  result_type ='expand')
 
     result[["lpost_house_nbr", "lpost_unit"]] = lp
-
+        
     vlog("End of adding extra house number")
     update_timestats("extra_hn", start_time)
 
     return result[np.concatenate([osm_addresses.keys(), ["in_house_nbr", "lpost_house_nbr", "lpost_unit"]])]
 
 
+def clean_addr_in(addr_in):
+    old_addr_in=""
+    while addr_in!= old_addr_in:
+        old_addr_in = addr_in
+        addr_in = re.sub(",[ ]*,", ",", addr_in).strip()
+        addr_in = re.sub(",$", "", addr_in)
+        addr_in = re.sub("^,", "", addr_in)
+        
+    return addr_in
+        
+    
 def transform_and_process(to_process_addresses, transformers,
                           check_results=True, osm_structured=False):
     """
@@ -275,10 +330,16 @@ def transform_and_process(to_process_addresses, transformers,
         step_stats = {"method": method, "todo":  0, "sent": 0, "match": 0, "match_26": 0, "reject_rec" :0, "reject_addr": 0, "reject_mism": 0}
         return pd.DataFrame(columns=[addr_key_field]), pd.DataFrame(columns=[addr_key_field, "reject_reason"]), step_stats
 
-    transformed_addresses["osm_addr_in"] =   transformed_addresses[street_field  ].fillna("") + ", "+                                              transformed_addresses[housenbr_field].fillna("") + ", "+                                              transformed_addresses[postcode_field].fillna("") + " " +                                             transformed_addresses[city_field    ].fillna("") + ", "+                                             transformed_addresses[country_field    ].fillna("")
+    transformed_addresses["osm_addr_in"] =   transformed_addresses[street_field  ].fillna("") + ", "+\
+                                             transformed_addresses[housenbr_field].fillna("") + ", "+\
+                                             transformed_addresses[postcode_field].fillna("") + " " +\
+                                             transformed_addresses[city_field    ].fillna("") + ", "+\
+                                             transformed_addresses[country_field ].fillna("")
 
-
-    transformed_addresses["osm_addr_in"]= transformed_addresses["osm_addr_in"].str.replace("^[ ,]+", "")
+    
+    transformed_addresses["osm_addr_in"]= transformed_addresses["osm_addr_in"].apply(clean_addr_in)
+    
+   
 
     if check_with_transformed :
         sent_addresses = transformed_addresses
@@ -1157,15 +1218,24 @@ def process_address_fast(data, osm_structured=False,
 
 
     addr_in = f"{data['street']}, {data['housenumber']}, {data['postcode']} {data['city']}, {data['country']}"
-    if osm_structured:
-        osm_res = get_osm_struct(street=     data['street'],
-                                housenumber=data['housenumber'],
-                                postcode=   data['postcode'],
-                                city=       data['city'],
-                                country=    data['country']
-                               )
-    else:
-        osm_res = get_osm(addr_in)
+    
+    addr_in= clean_addr_in(addr_in)
+
+    try:
+
+        if osm_structured:
+            osm_res = get_osm_struct(street=     data['street'],
+                                    housenumber=data['housenumber'],
+                                    postcode=   data['postcode'],
+                                    city=       data['city'],
+                                    country=    data['country']
+                                   )
+        else:
+            osm_res = get_osm(addr_in)
+    except Exception as exc:
+        log(f"Error during Nominatim call : {exc}")
+        vlog(traceback.format_exc())
+        return {"error": f"Error during Nominatim call: {exc}"}
 
     update_timestats("fast > osm", start_time)
 
@@ -1186,6 +1256,10 @@ def process_address_fast(data, osm_structured=False,
                                                      osm_structured=osm_structured,
                                                      with_extra_house_number=False,
                                                      retry_with_low_rank = False)
+                
+                if osm_res_retry and 'error' in osm_res_retry:
+                    return osm_res_retry
+                
                 if osm_res_retry and osm_res_retry["match"][0]["place_rank"] == 30: # if place_rank is not improved, we keep the original result
                     osm_res_retry["match"][0]["cleansed_house_nbr"] = cleansed_housenbr
                     if with_extra_house_number:
@@ -1278,7 +1352,7 @@ def process_address(data, check_results=True,
             update_timestats("t&p", start_time)
         except Exception as exc:
             log(f"Error during processing : {exc}")
-            traceback.print_exc(file=sys.stdout)
+            vlog(traceback.format_exc())
             return {"error": str(exc)}
 
         all_reject = all_reject.append(rejected, sort=False)
@@ -1287,6 +1361,7 @@ def process_address(data, check_results=True,
         if osm_results.shape[0] > 0:
             if with_extra_house_number :
                 osm_results = add_extra_house_number(osm_results, to_process_addresses)
+                
             start_time = datetime.now()
             form_res =  format_res(osm_results)
             form_rej = format_res(all_reject)
@@ -1353,8 +1428,8 @@ def process_addresses(to_process_addresses, check_results=True,
             osm_results["method"] = "error on " + ";".join(transformers)
             osm_addresses =      osm_addresses.append(osm_results, sort=False).drop_duplicates()
 
-            log(f"Error during processing : {exc}")
-            traceback.print_exc(logger)
+            log(f"Error during processing: {exc}")
+            vlog(traceback.format_exc())
 
         chunk  = chunk[~chunk[addr_key_field].isin(osm_results[addr_key_field])].copy()
         if chunk.shape[0]==0:
