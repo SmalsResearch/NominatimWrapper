@@ -15,6 +15,8 @@ Flask part of NominatimWrapper
 # TODO :
 # - SSL ?
 # - "namespace" is empty 
+# - Full address en batch
+# place_rank, place_id: int
 
 import os
 
@@ -263,50 +265,84 @@ def remove_empty_values(dct_lst):
     return [{k: v for k, v in item.items() if not pd.isnull(v) and v != ""} for item in dct_lst]
 
 
+def convert_street_components(osm_record):
 
+    address_out = {
+        "streetName"  : osm_record["addr_out_street"]  if "addr_out_street"    in osm_record else None,
+        "houseNumber" : osm_record["addr_out_number"]  if "addr_out_number"    in osm_record else None,
+        "postCode"    : osm_record["addr_out_postcode"]if "addr_out_postcode"  in osm_record else None,
+        "city"        : osm_record["addr_out_city"]    if "addr_out_city"      in osm_record else None,
+        "country"     : osm_record["addr_out_country"] if "addr_out_country"   in osm_record else None,
+        "other"       : osm_record["addr_out_other"]   if "addr_out_other"     in osm_record else None
+    }
+    osm_record["address"] = {k:v for k,v in address_out.items() if v is not None}
+
+    addr_out_keys = list(filter(lambda k: "addr_out" in k, osm_record.keys()))
+    for fld in addr_out_keys:
+        del  osm_record[fld]
+    return osm_record
+
+
+        
 app = Flask(__name__)
 api = Api(app,
-          version='1.0',
+          version='0.1',
           title='NominatimWrapper API',
-          description='A geocoder built upon Nominatim',
+          description="""A geocoder built upon Nominatim.
+          
+          Source available on: https://github.com/SmalsResearch/NominatimWrapper/
+          
+          """,
           doc='/doc',
           prefix='/REST/nominatimWrapper/v0.1'
-
 )
 
 namespace = api.namespace(
-    'nominatimwrapper',
-    'A geocoder built upon Nominatim (ns)')
+    '',
+    'Main namespace')
 
 # api.add_namespace(namespace)
 
+from flask import url_for
+
+with_https = os.getenv('HTTPS', "NO").upper().strip()
+
+if with_https=="YES":
+    # It runs behind a reverse proxy 
+    @property
+    def specs_url(self):
+        return url_for(self.endpoint('specs'), _external=True, _scheme='https')
+
+    Api.specs_url = specs_url
+
+    
 
 single_parser = reqparse.RequestParser()
-single_parser.add_argument('street',      type=str, help='Street name')
-single_parser.add_argument('housenumber', type=str, help='House number')
+single_parser.add_argument('streetName',      type=str, help='Street name')
+single_parser.add_argument('houseNumber', type=str, help='House number')
 single_parser.add_argument('city',        type=str, help='City name')
-single_parser.add_argument('postcode',    type=str, help='Postal code')
+single_parser.add_argument('postCode',    type=str, help='Postal code')
 single_parser.add_argument('country',     type=str, help='Country name')
-single_parser.add_argument('address',     type=str, help='Full address in a single field')
+single_parser.add_argument('fullAddress',     type=str, help='Full address in a single field')
 
 single_parser.add_argument('withRejected',
                            type=str,
                            choices=('yes', 'no'),
-                           help='if "yes", rejected results are returned (default: "no")')
+                           help='If "yes", rejected results are returned (default: "no")')
 single_parser.add_argument('checkResult',
                            type=str,
                            choices=('yes', 'no'),
-                           help='if "yes", will "double check" OSM results (default: "no")')
+                           help='If "yes", will "double check" OSM results (default: "no")')
 single_parser.add_argument('structOsm',
                            type=str,
                            choices=('yes', 'no'),
-                           help='if "yes", will call the structured version of OSM (default: "no")')
+                           help='If "yes", will call the structured version of OSM (default: "no")')
 single_parser.add_argument('extraHouseNbr',
                            type=str,
                            choices=('yes', 'no'),
-                           help='if "yes", will call libpostal on all addresses to get the house number (default: "yes")')
+                           help='If "yes", will call libpostal on all addresses to get the house number (default: "yes")')
 
-@api.route('/search')
+@namespace.route('/search')
 class Search(Resource):
     """ Single address geocoding"""
     @namespace.expect(single_parser)
@@ -344,13 +380,13 @@ class Search(Resource):
                 - lon
                 - displayName
                 - placeRank
-             - Structured address:
-                - addrOutStreet: first non null value in ["road", "pedestrian","footway", "cycleway", "path", "address27", "construction", "hamlet", "park"]
-                - addrOutNumber: house_number
-                - addrOutPostcode: postcode
-                - addrOutCity: first non null value in ["town", "village", "city_district", "county", "city"],
-                - addrOutCountry: country
-                - addrOutOthers: concatenate all values which were not picked by one of the above item
+             - Structured address (in addressOut):
+                - streetName: first non null value in ["road", "pedestrian","footway", "cycleway", "path", "address27", "construction", "hamlet", "park"]
+                - houseNumber: house_number
+                - postCode: postcode
+                - city: first non null value in ["town", "village", "city_district", "county", "city"],
+                - country: country
+                - other: concatenate all values which were not picked by one of the above item
              - Check results indicators (if checkResult='yes'):
                 - SIMStreetWhich
                 - SIMStreet
@@ -375,13 +411,13 @@ class Search(Resource):
         for k in timestats:
             timestats[k]=timedelta(0)
 
-        address = get_arg("address",      "")
+        address = get_arg("fullAddress",  "")
         data= {
-               street_field   : get_arg("street",      ""),
-               housenbr_field : get_arg("housenumber", ""),
-               city_field     : get_arg("city",        ""),
-               postcode_field : get_arg("postcode",    ""),
-               country_field  : get_arg("country",     ""),
+               street_field   : get_arg(street_field,      ""),
+               housenbr_field : get_arg(housenbr_field,    ""),
+               city_field     : get_arg(city_field,        ""),
+               postcode_field : get_arg(postcode_field,    ""),
+               country_field  : get_arg(country_field,     ""),
               }
 
         used_fields = list(filter(lambda x: data[x]!="", data))
@@ -406,11 +442,11 @@ class Search(Resource):
 
         if address != "":
             if len(used_fields)>0:
-                return [{"error": "Field 'address' cannot be used together with fields "+";".join(used_fields)}],  400
+                return [{"error": "Field 'fullAddress' cannot be used together with fields "+";".join(used_fields)}],  400
             if osm_structured :
-                return [{"error": "Field 'address' cannot be used together with fields 'structOsm=yes'"}],   400
+                return [{"error": "Field 'fullAddress' cannot be used together with fields 'structOsm=yes'"}],   400
             if check_results :
-                return [{"error": "Field 'address' cannot be used together with fields 'checkResult=yes'"}], 400
+                return [{"error": "Field 'fullAddress' cannot be used together with fields 'checkResult=yes'"}], 400
 
             data[street_field] = address
 
@@ -445,6 +481,16 @@ class Search(Resource):
             return res, 500
             
         return_code = 200 if ("match" in res and len(res["match"])>0) or ("reject" in res and len(res["reject"])>0) else 204
+        
+        
+            
+        for part in ['match', 'reject']:
+            if part in res:
+                for i in range(len(res[part])):
+                    res[part][i] = convert_street_components(res[part][i])
+            
+            
+            
 
         return to_camel_case(res), return_code
 
@@ -458,12 +504,12 @@ batch_parser.add_argument('csv file',
                           help="""
 A CSV file with the following columns:
 
-- street
-- housenumber
-- postcode
+- streetName
+- houseNumber
+- postCode
 - city
 - country
-- addr_key (must be unique)""")
+- addrKey (must be unique)""")
 
 batch_parser.add_argument('mode',               type=str, choices=('geo', 'short', 'long'), help="""
 Selection of columns in the ouput (default: short):
@@ -475,10 +521,10 @@ Selection of columns in the ouput (default: short):
 batch_parser.add_argument('withRejected',      type=str, choices=('yes', 'no'), help='if "yes", rejected results are returned (default: "no")')
 batch_parser.add_argument('checkResult',       type=str, choices=('yes', 'no'), help='if "yes", will "double check" OSM results (default: "no")')
 batch_parser.add_argument('structOsm',         type=str, choices=('yes', 'no'), help='if "yes", will call the structured version of OSM (default: "no")')
-batch_parser.add_argument('extraHouseNbr',    type=str, choices=('yes', 'no'), help='if "yes", will call libpostal on all addresses to get the house number  (default: "yes")')
+batch_parser.add_argument('extraHouseNbr',    type=str, choices=('yes', 'no'),  help='if "yes", will call libpostal on all addresses to get the house number  (default: "yes")')
 
 
-@api.route('/batch', methods=['POST'])
+@namespace.route('/batch', methods=['POST'])
 class Batch(Resource):
     """Batch geocoding"""
 
@@ -507,12 +553,13 @@ class Batch(Resource):
 - In 'short' mode, additional fields:
     - Results comming straight from Nominatim:
         - placeId
-    - Structured address:
-        - addrOutStreet: first non null value in ["road", "pedestrian","footway", "cycleway", "path", "address27", "construction", "hamlet", "park"]
-        - addrOutNumber: house_number
-        - addrOutPostcode: postcode
-        - addrOutCity: first non null value in ["town", "village", "city_district", "county", "city"],
-        - addrOutCountry: country
+    - Structured address (in addressOut):
+         - streetName: first non null value in ["road", "pedestrian","footway", "cycleway", "path", "address27", "construction", "hamlet", "park"]
+        - houseNumber: house_number
+        - postCode: postcode
+        - city: first non null value in ["town", "village", "city_district", "county", "city"],
+        - country: country
+        - other: concatenate all values which were not picked by one of the above item    
     - Other fields:
         - inHouseNbr:  house number given in input
         - lpostHouseNbr: "housenumber" provided by libpostal receiving concatenation of street and house number (from input)
@@ -526,8 +573,7 @@ class Batch(Resource):
         - SIMCity
         - SIMZip
         - SIMHouseNbr
-    - addrOutOthers: concatenate all values which were not picked by one of the 'addrOut*' items
-    - osmAddrIn: what address (after possibly some sequence of transformation) is actually sent to Nominatim
+    - osmAddrIn: what address (after possibly some sequence of transformations) is actually sent to Nominatim
     - retryOn26: If placeRank in match record is below 30 and housenumber (in input) contains other characters than digits, we retry to call Nominatim by only considering the first digits of housenumber: "30A","30.3", "30 bt 2", "30-32" become "30". If it gives a result with place_rank = 30, we keep it (in this case, a "cleansed_house_nbr" appears in the output, with "30" in this example), and this field is set to "True"
 
 
@@ -604,6 +650,13 @@ If "withRejected=yes", an additional field with all rejected records is added, w
 
         if res is None or res.shape[0] == 0:
             return [], 204
+        
+        res["place_id"] = res["place_id"].astype(int)
+        res["place_rank"] = res["place_rank"].astype(int)
+        rejected_addresses["place_id"] = rejected_addresses["place_id"].astype(int)
+        rejected_addresses["place_rank"] = rejected_addresses["place_rank"].astype(int)
+
+
 
         try:
             if mode == "geo":
@@ -613,14 +666,14 @@ If "withRejected=yes", an additional field with all rejected records is added, w
             elif mode == "short":
                 fields=[addr_key_field,
                            "lat", "lon", "place_rank", "method", "place_id",
-                           "addr_out_street", "addr_out_number", "in_house_nbr", "lpost_house_nbr", "lpost_unit", "addr_out_postcode", "addr_out_city",   "addr_out_country" ]
+                           "addr_out_street", "addr_out_number", "in_house_nbr", "lpost_house_nbr", "lpost_unit", "addr_out_postcode", "addr_out_city", "addr_out_country", "addr_out_other" ]
 
                 res = df.merge(res)[fields]
                 rejected_addresses = rejected_addresses[[ f for f in fields if f in rejected_addresses ]]
             elif mode == "long":
                 res = df.merge(res)
 
-
+            
             if with_rejected:
                 rejected_rec = rejected_addresses.groupby(addr_key_field).apply(lambda rec: remove_empty_values( rec.to_dict(orient="records")) ).rename("reject").reset_index()
                 res = res.merge(rejected_rec, how="outer")
@@ -634,13 +687,25 @@ If "withRejected=yes", an additional field with all rejected records is added, w
 
         log("Output: \n"+res.iloc[:, 0:9].to_string(max_rows=9))
 
-        res = to_camel_case(res.to_dict(orient="records"))
+        res = res.to_dict(orient="records")
+        
+        
+        for i in range(len(res)):
+            res[i] = convert_street_components(res[i])
+            
+            if "reject" in res[i]:
+                for j in range(len(res[i]["reject"])):
+                    res[i]["reject"][j] = convert_street_components(res[i]["reject"][j])
+        
+        res = to_camel_case(res)
+        
+        #log(res)
 
         return res, 200
     
     
 
-@api.route('/health', methods=['GET'])
+@namespace.route('/health', methods=['GET'])
 class Health(Resource):
 
     @namespace.response(500, 'Internal Server error')

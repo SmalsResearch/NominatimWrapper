@@ -508,6 +508,7 @@ def process_osm(df, osm_addr_field, accept_language="",
 
     vlog("     - Done!")
 
+    
     res_columns = [osm_addr_field, addr_key_field, "place_id", "lat", "lon", "display_name", "namedetails", "place_rank", "category", "type", "SIM_street_which", "SIM_street", "SIM_city", "SIM_zip", "SIM_house_nbr"] + list(collapse_params.keys()) + ["addr_out_other"]
     res_columns = [c for c in res_columns if c in osm_results ]
     return osm_results[res_columns], osm_reject
@@ -1217,18 +1218,18 @@ def process_address_fast(data, osm_structured=False,
     start_time = datetime.now()
 
 
-    addr_in = f"{data['street']}, {data['housenumber']}, {data['postcode']} {data['city']}, {data['country']}"
+    addr_in = f"{data[street_field]}, {data[housenbr_field]}, {data[postcode_field]} {data[city_field]}, {data[country_field]}"
     
     addr_in= clean_addr_in(addr_in)
 
     try:
 
         if osm_structured:
-            osm_res = get_osm_struct(street=     data['street'],
-                                    housenumber=data['housenumber'],
-                                    postcode=   data['postcode'],
-                                    city=       data['city'],
-                                    country=    data['country']
+            osm_res = get_osm_struct(street=     data[street_field],
+                                    housenumber=data[housenbr_field],
+                                    postcode=   data[postcode_field],
+                                    city=       data[city_field],
+                                    country=    data[country_field]
                                    )
         else:
             osm_res = get_osm(addr_in)
@@ -1243,15 +1244,18 @@ def process_address_fast(data, osm_structured=False,
         match = format_osm_addr(osm_res[0])
 
         if retry_with_low_rank and match["place_rank"] < 30: # Try to clean housenumber to see if we can improved placerank
+            vlog("Trying retry_with_low_rank")
             start_timet2 = datetime.now()
-            cleansed_housenbr = re.match("^([0-9]+)", data['housenumber'])
+            cleansed_housenbr = re.match("^([0-9]+)", data[housenbr_field])
+            #vlog(f"cleansed_housenbr: {cleansed_housenbr}")
             if cleansed_housenbr:
                 cleansed_housenbr = cleansed_housenbr[0]
-
-            if cleansed_housenbr != data['housenumber']:
+            
+            #vlog(f"cleansed_housenbr: {cleansed_housenbr}")
+            if cleansed_housenbr != data[housenbr_field]:
 
                 data_cleansed= data.copy()
-                data_cleansed['housenumber'] = cleansed_housenbr
+                data_cleansed[housenbr_field] = cleansed_housenbr
                 osm_res_retry = process_address_fast(data_cleansed,
                                                      osm_structured=osm_structured,
                                                      with_extra_house_number=False,

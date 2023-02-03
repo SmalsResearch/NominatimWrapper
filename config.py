@@ -59,12 +59,12 @@ else :
     logging.info("Use default libpostal host: %s", libpostal_host)
 
 
-street_field  = "street"
-housenbr_field = "housenumber"
-postcode_field = "postcode"
+street_field  = "streetName"
+housenbr_field = "houseNumber"
+postcode_field = "postCode"
 city_field  =    "city"
 country_field =  "country"
-addr_key_field = "addr_key"
+addr_key_field = "addrKey"
 
 regex_replacements = {
     "init": [

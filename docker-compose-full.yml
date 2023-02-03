@@ -55,6 +55,7 @@ services:
       - LOG_LEVEL=medium
       - TIMING=no
       - FASTMODE=yes
+      - HTTPS=yes
 #       - TRANSFORMERS=[ ["orig"],
 #                           ["regex[init]"],
 #                           ["nonum"],
