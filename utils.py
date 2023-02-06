@@ -6,7 +6,7 @@ Functions used in AddressCleanserREST
 #!/usr/bin/env python
 # coding: utf-8
 
-# pylint: disable=invalid-naame
+# pylint: disable=invalid-name
 # pylint: disable=line-too-long
 
 
@@ -101,29 +101,28 @@ def to_camel_case(data):
     If d is a string, convert the string
     If d is a dict, convert all keys, recursively (i.e., values are dict or list), but not simple values
     If d is a list, convert all objects in the list
-    
+
     Parameters
     ----------
     data: str, dict or list
         Object to camelize
-        
+
     Returns
     -------
     Object of the same structure as data, but where :
     - dictionary keys have been camelized if data is a dict
-    - input string has been camelized if data is a string 
-    
+    - input string has been camelized if data is a string
+
     """
-    
-    
+
+
     if isinstance(data, str):
         return re.sub(r"(_)([a-z])", lambda m: m.group(2).upper(),  data)
-    elif isinstance(data, dict):
-        return { to_camel_case(key): to_camel_case(item) if (isinstance(item, dict) or isinstance(item, list)) else item for key, item in data.items()}
-    elif isinstance(data, list):
-        return [ to_camel_case(item)  for item in data] 
-    else:
-        return data
+    if isinstance(data, dict):
+        return { to_camel_case(key): to_camel_case(item) if isinstance(item, (dict, list)) else item for key, item in data.items()}
+    if isinstance(data, list):
+        return [ to_camel_case(item)  for item in data]
+    return data
 
 def retry_with_low_place_rank(osm_results, sent_addresses,
                               check_results=True, osm_structured=False):
@@ -173,10 +172,10 @@ def retry_with_low_place_rank(osm_results, sent_addresses,
                 sent_addresses_26[postcode_field].fillna("") +" " +\
                 sent_addresses_26[city_field    ].fillna("") +", "+\
                 sent_addresses_26[country_field].fillna("")
-        
+
         sent_addresses_26["osm_addr_in"]= sent_addresses_26["osm_addr_in"].apply(clean_addr_in)
-        
-        
+
+
 
         vlog(" ; ".join([f"rank {r}: {c}" for r, c in sent_addresses_26.place_rank.value_counts().iteritems()]))
         #print(osm_results_26.place_rank.value_counts())
@@ -213,14 +212,14 @@ def get_lpost_house_number(street):
     [house number, box number].
 
     """
-    
+
     try:
         lpost = parse_address(street)
 
 
         housenbr = ";".join([y for (y, x) in lpost if x=="house_number"])
         boxnbr = ";".join([y for (y, x) in lpost if x=="unit"])
-    except Exception as exc: 
+    except Exception as exc:
         log(f"Error during processing of 'get_lpost_house_number': {exc}")
         housenbr = 'error during Libpostal processing'
         boxnbr   = 'error during Libpostal processing'
@@ -258,11 +257,11 @@ def add_extra_house_number(osm_addresses, addresses):
 
     result = osm_addresses.merge(addresses)
     result["in_house_nbr"] = result[housenbr_field]
-    
+
     lp = result.fillna("").apply(lambda row: get_lpost_house_number(f"{row[street_field]} {row[housenbr_field]}, {row[postcode_field]} {row[city_field]}".strip()), axis=1,  result_type ='expand')
 
     result[["lpost_house_nbr", "lpost_unit"]] = lp
-        
+
     vlog("End of adding extra house number")
     update_timestats("extra_hn", start_time)
 
@@ -270,16 +269,32 @@ def add_extra_house_number(osm_addresses, addresses):
 
 
 def clean_addr_in(addr_in):
+    """
+    Clean string containing an adresse, by removing useless commas. Examples:
+        - "Avenue Fonsny, , , , " becomes "Avenue Fonsny"
+        - "Avenue Fonsny, , 1060, , " becomes "Avenue Fonsny, 1060"
+
+    Parameters
+    ----------
+    addr_in : str
+        Address to clean.
+
+    Returns
+    -------
+    addr_in : str
+        Cleansed address (without duplicated commas).
+
+    """
     old_addr_in=""
     while addr_in!= old_addr_in:
         old_addr_in = addr_in
         addr_in = re.sub(",[ ]*,", ",", addr_in).strip()
         addr_in = re.sub(",$", "", addr_in)
         addr_in = re.sub("^,", "", addr_in)
-        
+
     return addr_in
-        
-    
+
+
 def transform_and_process(to_process_addresses, transformers,
                           check_results=True, osm_structured=False):
     """
@@ -336,10 +351,10 @@ def transform_and_process(to_process_addresses, transformers,
                                              transformed_addresses[city_field    ].fillna("") + ", "+\
                                              transformed_addresses[country_field ].fillna("")
 
-    
+
     transformed_addresses["osm_addr_in"]= transformed_addresses["osm_addr_in"].apply(clean_addr_in)
-    
-   
+
+
 
     if check_with_transformed :
         sent_addresses = transformed_addresses
@@ -508,7 +523,7 @@ def process_osm(df, osm_addr_field, accept_language="",
 
     vlog("     - Done!")
 
-    
+
     res_columns = [osm_addr_field, addr_key_field, "place_id", "lat", "lon", "display_name", "namedetails", "place_rank", "category", "type", "SIM_street_which", "SIM_street", "SIM_city", "SIM_zip", "SIM_house_nbr"] + list(collapse_params.keys()) + ["addr_out_other"]
     res_columns = [c for c in res_columns if c in osm_results ]
     return osm_results[res_columns], osm_reject
@@ -1076,12 +1091,14 @@ def get_init_df(data):
         Single-record dataframe ready for "batch" processing.
 
     """
+    log("init_df:")
+    log(data)
     return pd.DataFrame([{addr_key_field : "1",
-                          street_field:   data["street"],
-                          housenbr_field: data["housenumber"],
-                          postcode_field: data["postcode"],
-                          city_field:     data["city"],
-                          country_field:  data["country"]
+                          street_field:   data[street_field],
+                          housenbr_field: data[housenbr_field],
+                          postcode_field: data[postcode_field],
+                          city_field:     data[city_field],
+                          country_field:  data[country_field]
                           }])
 
 
@@ -1219,7 +1236,7 @@ def process_address_fast(data, osm_structured=False,
 
 
     addr_in = f"{data[street_field]}, {data[housenbr_field]}, {data[postcode_field]} {data[city_field]}, {data[country_field]}"
-    
+
     addr_in= clean_addr_in(addr_in)
 
     try:
@@ -1250,7 +1267,7 @@ def process_address_fast(data, osm_structured=False,
             #vlog(f"cleansed_housenbr: {cleansed_housenbr}")
             if cleansed_housenbr:
                 cleansed_housenbr = cleansed_housenbr[0]
-            
+
             #vlog(f"cleansed_housenbr: {cleansed_housenbr}")
             if cleansed_housenbr != data[housenbr_field]:
 
@@ -1260,10 +1277,10 @@ def process_address_fast(data, osm_structured=False,
                                                      osm_structured=osm_structured,
                                                      with_extra_house_number=False,
                                                      retry_with_low_rank = False)
-                
+
                 if osm_res_retry and 'error' in osm_res_retry:
                     return osm_res_retry
-                
+
                 if osm_res_retry and osm_res_retry["match"][0]["place_rank"] == 30: # if place_rank is not improved, we keep the original result
                     osm_res_retry["match"][0]["cleansed_house_nbr"] = cleansed_housenbr
                     if with_extra_house_number:
@@ -1365,7 +1382,7 @@ def process_address(data, check_results=True,
         if osm_results.shape[0] > 0:
             if with_extra_house_number :
                 osm_results = add_extra_house_number(osm_results, to_process_addresses)
-                
+
             start_time = datetime.now()
             form_res =  format_res(osm_results)
             form_rej = format_res(all_reject)
@@ -1445,3 +1462,62 @@ def process_addresses(to_process_addresses, check_results=True,
         osm_addresses = add_extra_house_number(osm_addresses, to_process_addresses)
 
     return osm_addresses, rejected_addresses #{"match": format_res(osm_results), "rejected": format_res(all_reject)}
+
+
+
+
+
+
+def remove_empty_values(dct_lst):
+    """
+    Remove empty values in a list of dict
+
+    Parameters
+    ----------
+    dct_lst : list (of dicts)
+        List of dictionaries.
+
+    Returns
+    -------
+    list
+        Copy of input list, but all empty values in dicts are dropped
+
+    """
+
+    return [{k: v for k, v in item.items() if not pd.isnull(v) and v != ""} for item in dct_lst]
+
+
+def convert_street_components(osm_record):
+    """
+    Convert a record containing fields like "addr_out_street", "addr_out_number"
+    to a dict containing a field "address":{"streetName":..., "houseNumber": ...}
+
+    Parameters
+    ----------
+    osm_record : dict
+        input OSM record
+
+    Returns
+    -------
+    osm_record : dict
+        Idem as input, with an additional field "address", and without "addr_out_*" fields
+
+    """
+
+    address_out = {
+        "streetName"  : osm_record["addr_out_street"]  if "addr_out_street"    in osm_record else None,
+        "houseNumber" : osm_record["addr_out_number"]  if "addr_out_number"    in osm_record else None,
+        "postCode"    : osm_record["addr_out_postcode"]if "addr_out_postcode"  in osm_record else None,
+        "city"        : osm_record["addr_out_city"]    if "addr_out_city"      in osm_record else None,
+        "country"     : osm_record["addr_out_country"] if "addr_out_country"   in osm_record else None,
+        "other"       : osm_record["addr_out_other"]   if "addr_out_other"     in osm_record else None
+    }
+    osm_record["address"] = {k:v for k,v in address_out.items() if v is not None}
+
+    addr_out_keys = list(filter(lambda k: "addr_out" in k, osm_record.keys()))
+    for fld in addr_out_keys:
+        del  osm_record[fld]
+    return osm_record
+
+
+

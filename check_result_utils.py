@@ -365,8 +365,6 @@ def street_compare(street1, street2):
     #display(pd.concat([street_split_a, street_split_b], axis=1))
 
 
-# TODO: clean and compute fingerprints beforehand, to avoid to do it several times
-    
     fingerprints1 = pd.DataFrame(columns = street1_split.columns)
     for ai in range(street1_split.shape[1]):
         street1_split[ai] = street1_split[ai].str.upper().apply(remove_accents)

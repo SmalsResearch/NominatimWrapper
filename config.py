@@ -99,10 +99,10 @@ similarity_threshold = 0.5
 
 default_transformers_sequence = [ ["orig"],
                           ["regex[init]"],
-                          ["nonum"],
                           ["libpostal", "regex[lpost]"],
-                          ["libpostal", "regex[lpost]", "nonum"],
                           ["libpostal", "regex[lpost]", "photon"],
+                          ["nonum"],
+                          ["libpostal", "regex[lpost]", "nonum"],
                           ["libpostal", "regex[lpost]", "photon", "nonum"],
                           ["photon"],
                           ["photon", "nonum"],

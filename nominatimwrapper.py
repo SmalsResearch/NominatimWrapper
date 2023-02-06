@@ -11,12 +11,14 @@ Flask part of NominatimWrapper
 
 
 # pylint: disable=line-too-long
+# pylint: disable=invalid-name
+
 
 # TODO :
 # - SSL ?
-# - "namespace" is empty 
+# - "namespace" is empty
 # - Full address en batch
-# place_rank, place_id: int
+# - split/reorganise util.py
 
 import os
 
@@ -31,13 +33,14 @@ import json
 import gzip
 
 
-from flask import Flask,  request
+from flask import Flask,  request, url_for
 from flask_restplus import Api, Resource, reqparse
+
 import werkzeug
 
 import pandas as pd
 
-logging.basicConfig(format='[%(asctime)s]  %(message)s', stream=sys.stdout)
+logging.basicConfig(format='[%(asctime)s]  %(message)s', stream=sys.stdout) # does not work if I put if after the next import...
 
 
 from base import (log, vlog, get_osm, get_photon)
@@ -47,7 +50,8 @@ from utils import (parse_address,
                                   addr_key_field, street_field, housenbr_field,
                                   postcode_field, city_field, country_field,
                                   process_address, process_addresses,
-                                  update_timestats, timestats, to_camel_case)
+                                  update_timestats, timestats, to_camel_case,
+                                  convert_street_components, remove_empty_values)
 
 
 from config import osm_host, libpostal_host, photon_host, default_transformers_sequence, city_test_from, city_test_to
@@ -246,52 +250,16 @@ def get_yesno_arg(argname, def_val):
 
 
 
-def remove_empty_values(dct_lst):
-    """
-    Remove empty values in a list of dict
-
-    Parameters
-    ----------
-    dct_lst : list (of dicts)
-        List of dictionaries.
-
-    Returns
-    -------
-    list
-        Copy of input list, but all empty values in dicts are dropped
-
-    """
-
-    return [{k: v for k, v in item.items() if not pd.isnull(v) and v != ""} for item in dct_lst]
 
 
-def convert_street_components(osm_record):
-
-    address_out = {
-        "streetName"  : osm_record["addr_out_street"]  if "addr_out_street"    in osm_record else None,
-        "houseNumber" : osm_record["addr_out_number"]  if "addr_out_number"    in osm_record else None,
-        "postCode"    : osm_record["addr_out_postcode"]if "addr_out_postcode"  in osm_record else None,
-        "city"        : osm_record["addr_out_city"]    if "addr_out_city"      in osm_record else None,
-        "country"     : osm_record["addr_out_country"] if "addr_out_country"   in osm_record else None,
-        "other"       : osm_record["addr_out_other"]   if "addr_out_other"     in osm_record else None
-    }
-    osm_record["address"] = {k:v for k,v in address_out.items() if v is not None}
-
-    addr_out_keys = list(filter(lambda k: "addr_out" in k, osm_record.keys()))
-    for fld in addr_out_keys:
-        del  osm_record[fld]
-    return osm_record
-
-
-        
 app = Flask(__name__)
 api = Api(app,
           version='0.1',
           title='NominatimWrapper API',
           description="""A geocoder built upon Nominatim.
-          
+
           Source available on: https://github.com/SmalsResearch/NominatimWrapper/
-          
+
           """,
           doc='/doc',
           prefix='/REST/nominatimWrapper/v0.1'
@@ -303,19 +271,19 @@ namespace = api.namespace(
 
 # api.add_namespace(namespace)
 
-from flask import url_for
+
 
 with_https = os.getenv('HTTPS', "NO").upper().strip()
 
 if with_https=="YES":
-    # It runs behind a reverse proxy 
+    # It runs behind a reverse proxy
     @property
     def specs_url(self):
         return url_for(self.endpoint('specs'), _external=True, _scheme='https')
 
     Api.specs_url = specs_url
 
-    
+
 
 single_parser = reqparse.RequestParser()
 single_parser.add_argument('streetName',      type=str, help='Street name')
@@ -328,19 +296,24 @@ single_parser.add_argument('fullAddress',     type=str, help='Full address in a 
 single_parser.add_argument('withRejected',
                            type=str,
                            choices=('yes', 'no'),
-                           help='If "yes", rejected results are returned (default: "no")')
+                           help='If "yes", rejected results are returned',
+                           default='no')
 single_parser.add_argument('checkResult',
                            type=str,
                            choices=('yes', 'no'),
-                           help='If "yes", will "double check" OSM results (default: "no")')
+                           help='If "yes", will "double check" OSM results',
+                           default='no'
+                          )
 single_parser.add_argument('structOsm',
                            type=str,
                            choices=('yes', 'no'),
-                           help='If "yes", will call the structured version of OSM (default: "no")')
+                           help='If "yes", will call the structured version of OSM',
+                           default='no')
 single_parser.add_argument('extraHouseNbr',
                            type=str,
                            choices=('yes', 'no'),
-                           help='If "yes", will call libpostal on all addresses to get the house number (default: "yes")')
+                           help='If "yes", will call libpostal on all addresses to get the house number',
+                           default='yes')
 
 @namespace.route('/search')
 class Search(Resource):
@@ -479,18 +452,18 @@ class Search(Resource):
 
         if "error" in res:
             return res, 500
-            
+
         return_code = 200 if ("match" in res and len(res["match"])>0) or ("reject" in res and len(res["reject"])>0) else 204
-        
-        
-            
+
+
+
         for part in ['match', 'reject']:
             if part in res:
                 for i in range(len(res[part])):
                     res[part][i] = convert_street_components(res[part][i])
-            
-            
-            
+
+
+
 
         return to_camel_case(res), return_code
 
@@ -518,10 +491,26 @@ Selection of columns in the ouput (default: short):
 - short: return lat/long, cleansed address (street, number, zipcode, city, country)
 - long: return all results from Nominatim""")
 
-batch_parser.add_argument('withRejected',      type=str, choices=('yes', 'no'), help='if "yes", rejected results are returned (default: "no")')
-batch_parser.add_argument('checkResult',       type=str, choices=('yes', 'no'), help='if "yes", will "double check" OSM results (default: "no")')
-batch_parser.add_argument('structOsm',         type=str, choices=('yes', 'no'), help='if "yes", will call the structured version of OSM (default: "no")')
-batch_parser.add_argument('extraHouseNbr',    type=str, choices=('yes', 'no'),  help='if "yes", will call libpostal on all addresses to get the house number  (default: "yes")')
+batch_parser.add_argument('withRejected',
+                          type=str,
+                          choices=('yes', 'no'),
+                          help='if "yes", rejected results are returned',
+                          default='no')
+batch_parser.add_argument('checkResult',
+                          type=str,
+                          choices=('yes', 'no'),
+                          help='if "yes", will "double check" OSM results',
+                          default='no')
+batch_parser.add_argument('structOsm',
+                          type=str,
+                          choices=('yes', 'no'),
+                          help='if "yes", will call the structured version of OSM',
+                          default='no')
+batch_parser.add_argument('extraHouseNbr',
+                          type=str,
+                          choices=('yes', 'no'),
+                          help='if "yes", will call libpostal on all addresses to get the house number',
+                          default='yes')
 
 
 @namespace.route('/batch', methods=['POST'])
@@ -559,14 +548,14 @@ class Batch(Resource):
         - postCode: postcode
         - city: first non null value in ["town", "village", "city_district", "county", "city"],
         - country: country
-        - other: concatenate all values which were not picked by one of the above item    
+        - other: concatenate all values which were not picked by one of the above item
     - Other fields:
         - inHouseNbr:  house number given in input
         - lpostHouseNbr: "housenumber" provided by libpostal receiving concatenation of street and house number (from input)
         - lpostUnit: "unit"  provided by libpostal receiving concatenation of street and house number (from input)
 - In 'long' mode, additional fields:
     - All columns present in input will appear in output
-    - display_name
+    - displayName
     - Check results indicators (if checkResult='yes'):
         - SIMStreetWhich
         - SIMStreet
@@ -574,7 +563,7 @@ class Batch(Resource):
         - SIMZip
         - SIMHouseNbr
     - osmAddrIn: what address (after possibly some sequence of transformations) is actually sent to Nominatim
-    - retryOn26: If placeRank in match record is below 30 and housenumber (in input) contains other characters than digits, we retry to call Nominatim by only considering the first digits of housenumber: "30A","30.3", "30 bt 2", "30-32" become "30". If it gives a result with place_rank = 30, we keep it (in this case, a "cleansed_house_nbr" appears in the output, with "30" in this example), and this field is set to "True"
+    - retryOn26: If placeRank in match record is below 30 and housenumber (in input) contains other characters than digits, we retry to call Nominatim by only considering the first digits of housenumber: "30A","30.3", "30 bt 2", "30-32" become "30". If it gives a result with place_rank = 30, we keep it (in this case, a "cleansedHouseNbr" appears in the output, with "30" in this example), and this field is set to "True"
 
 
 If "withRejected=yes", an additional field with all rejected records is added, with the same field selection as above, according to "mode", plus one additional fields, 'reject_reason'. Equal to:
@@ -650,7 +639,7 @@ If "withRejected=yes", an additional field with all rejected records is added, w
 
         if res is None or res.shape[0] == 0:
             return [], 204
-        
+
         res["place_id"] = res["place_id"].astype(int)
         res["place_rank"] = res["place_rank"].astype(int)
         rejected_addresses["place_id"] = rejected_addresses["place_id"].astype(int)
@@ -659,6 +648,8 @@ If "withRejected=yes", an additional field with all rejected records is added, w
 
 
         try:
+            res = df.merge(res, how="left")
+
             if mode == "geo":
                 fields= [addr_key_field,"lat", "lon", "place_rank", "method"]
                 res = res[fields]
@@ -671,9 +662,9 @@ If "withRejected=yes", an additional field with all rejected records is added, w
                 res = df.merge(res)[fields]
                 rejected_addresses = rejected_addresses[[ f for f in fields if f in rejected_addresses ]]
             elif mode == "long":
-                res = df.merge(res)
+                pass
 
-            
+
             if with_rejected:
                 rejected_rec = rejected_addresses.groupby(addr_key_field).apply(lambda rec: remove_empty_values( rec.to_dict(orient="records")) ).rename("reject").reset_index()
                 res = res.merge(rejected_rec, how="outer")
@@ -688,30 +679,31 @@ If "withRejected=yes", an additional field with all rejected records is added, w
         log("Output: \n"+res.iloc[:, 0:9].to_string(max_rows=9))
 
         res = res.to_dict(orient="records")
-        
-        
-        for i in range(len(res)):
-            res[i] = convert_street_components(res[i])
-            
-            if "reject" in res[i]:
-                for j in range(len(res[i]["reject"])):
-                    res[i]["reject"][j] = convert_street_components(res[i]["reject"][j])
-        
+
+
+        if mode != "geo":
+            for i in range(len(res)):
+                res[i] = convert_street_components(res[i])
+
+                if "reject" in res[i]:
+                    for j in range(len(res[i]["reject"])):
+                        res[i]["reject"][j] = convert_street_components(res[i]["reject"][j])
+
         res = to_camel_case(res)
-        
+
         #log(res)
 
         return res, 200
-    
-    
+
+
 
 @namespace.route('/health', methods=['GET'])
 class Health(Resource):
-
+    """ Check service status """
     @namespace.response(500, 'Internal Server error')
     @namespace.response(503, 'Service is "DOWN"')
     @namespace.response(200, 'Service is "UP" or "DEGRADED"')
-    
+
     def get(self):
         """Health status
 
@@ -719,11 +711,11 @@ class Health(Resource):
         -------
         - {'status': 'DOWN'}: Nominatim server does not answer (or gives an unexpected answer)
         - {'status': 'DEGRADED'}: Either Libpostal or Photon is down (or gives an unexpected answer). Geocoding is still possible as long as it does not requires one of those transformer
-        - {'status': 'UP'}: Service works correctly 
+        - {'status': 'UP'}: Service works correctly
 
         """
         # Checking Nominatim
-        
+
         try:
             osm = get_osm(city_test_from)
             if not city_test_to[0] in osm[0]["namedetails"]["name:fr"]:
@@ -733,22 +725,22 @@ class Health(Resource):
                                 "details": f"Nominatim answer: {osm}"}}, 503
 
         except Exception as exc:
-            
+
             log("Nominatim not up & running")
             log(f"Nominatim host: {osm_host}")
-            
+
             return {"status": "DOWN",
                     "details": {"errorMessage": "Nominatim server does not answer",
                                 "details": f"{exc}"}}, 503
 
         # Checking Libpostal
-        
+
         try:
             lpost = parse_address(city_test_from)
             if len(lpost) < 1 or len(lpost[0]) < 1 or lpost[0][0].lower() != city_test_to[0].lower():
-                 return {"status": "DEGRADED",
-                         "details": {"errorMessage": "Libpostal server answers, but gives an unexpected answer",
-                                     "details": f"Libpostal answer: {lpost}"}}, 200
+                return {"status": "DEGRADED",
+                        "details": {"errorMessage": "Libpostal server answers, but gives an unexpected answer",
+                                    "details": f"Libpostal answer: {lpost}"}}, 200
 
         except Exception as exc:
             log("Libpostal not up & running ")
@@ -758,7 +750,7 @@ class Health(Resource):
                                 "details": f"{exc}"}}, 200
 
         # Checking Photon
-        
+
         try:
             phot=""
             phot = get_photon(city_test_from)
@@ -771,6 +763,5 @@ class Health(Resource):
             return {"status": "DEGRADED",
                 "details": {"errorMessage": "Photon server does not answer",
                         "details": f"{exc}"}}, 200
-        
+
         return {"status": "UP"}, 200
-    
