@@ -296,24 +296,23 @@ single_parser.add_argument('fullAddress',     type=str, help='Full address in a 
 single_parser.add_argument('withRejected',
                            type=str,
                            choices=('yes', 'no'),
-                           help='If "yes", rejected results are returned',
-                           default='no')
+                           default='no',
+                           help='If "yes", rejected results are returned')
 single_parser.add_argument('checkResult',
                            type=str,
                            choices=('yes', 'no'),
-                           help='If "yes", will "double check" OSM results',
-                           default='no'
-                          )
+                           default='no',
+                           help='If "yes", will "double check" OSM results')
 single_parser.add_argument('structOsm',
                            type=str,
                            choices=('yes', 'no'),
-                           help='If "yes", will call the structured version of OSM',
-                           default='no')
+                           default='no',
+                           help='If "yes", will call the structured version of OSM')
 single_parser.add_argument('extraHouseNbr',
                            type=str,
                            choices=('yes', 'no'),
-                           help='If "yes", will call libpostal on all addresses to get the house number',
-                           default='yes')
+                           default='yes',
+                           help='If "yes", will call libpostal on all addresses to get the house number')
 
 @namespace.route('/search')
 class Search(Resource):
@@ -484,8 +483,12 @@ A CSV file with the following columns:
 - country
 - addrKey (must be unique)""")
 
-batch_parser.add_argument('mode',               type=str, choices=('geo', 'short', 'long'), help="""
-Selection of columns in the ouput (default: short):
+batch_parser.add_argument('mode',               
+                          type=str, 
+                          choices=('geo', 'short', 'long'), 
+                          default='short',
+                          help="""
+Selection of columns in the ouput :
 
 - geo: only return lat/long
 - short: return lat/long, cleansed address (street, number, zipcode, city, country)
@@ -494,23 +497,24 @@ Selection of columns in the ouput (default: short):
 batch_parser.add_argument('withRejected',
                           type=str,
                           choices=('yes', 'no'),
+                          default='no',
                           help='if "yes", rejected results are returned',
-                          default='no')
+
 batch_parser.add_argument('checkResult',
                           type=str,
                           choices=('yes', 'no'),
-                          help='if "yes", will "double check" OSM results',
-                          default='no')
+                          default='no',
+                          help='if "yes", will "double check" OSM results')
 batch_parser.add_argument('structOsm',
                           type=str,
                           choices=('yes', 'no'),
-                          help='if "yes", will call the structured version of OSM',
-                          default='no')
+                          default='no',
+                          help='if "yes", will call the structured version of OSM')
 batch_parser.add_argument('extraHouseNbr',
                           type=str,
                           choices=('yes', 'no'),
-                          help='if "yes", will call libpostal on all addresses to get the house number',
-                          default='yes')
+                          default='yes',
+                          help='if "yes", will call libpostal on all addresses to get the house number')
 
 
 @namespace.route('/batch', methods=['POST'])

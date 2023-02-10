@@ -1518,6 +1518,3 @@ def convert_street_components(osm_record):
     for fld in addr_out_keys:
         del  osm_record[fld]
     return osm_record
-
-
-
