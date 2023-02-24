@@ -19,6 +19,10 @@ Flask part of NominatimWrapper
 # - "namespace" is empty
 # - Full address en batch
 # - split/reorganise util.py
+# - fast: "others" in nominatim
+# - 'mode' in search 
+# - according to 'mode', avoid to compute useless things
+# - distToMatch in non fast mode
 
 import os
 
@@ -51,8 +55,8 @@ from utils import (parse_address,
                                   postcode_field, city_field, country_field,
                                   process_address, process_addresses,
                                   update_timestats, timestats, to_camel_case,
-                   #               convert_street_components, 
-                                   remove_empty_values, 
+                   #               convert_street_components,
+                                   # remove_empty_values,
                                    multiindex_to_dict)
 
 
@@ -346,6 +350,8 @@ class Search(Resource):
     @namespace.response(200, 'Found a match for this address (or some rejected addresses)')
     @namespace.response(204, 'No address found, even rejected')
 
+    
+            
     def get(self):
         """
         Geocode a single address.
@@ -355,32 +361,36 @@ class Search(Resource):
 
         Returns a dictionary with 2 parts
 
-        - match: a single result, with the following fields:
-            - Results comming straight from Nominatim:
-                - placeId
-                - lat
-                - lon
-                - displayName
-                - placeRank
-             - Structured address (in addressOut):
+        - match: a single result, with the following blocs:
+            - input : all columns present in input data, but at least "addrKey" (if provided), "streetName", "houseNumber", "postCode", "city", "country"
+            - output: consolidated result of geocoding :
                 - streetName: first non null value in ["road", "pedestrian","footway", "cycleway", "path", "address27", "construction", "hamlet", "park"]
                 - houseNumber: house_number
                 - postCode: postcode
                 - city: first non null value in ["town", "village", "city_district", "county", "city"],
                 - country: country
                 - other: concatenate all values which were not picked by one of the above item
-             - Check results indicators (if checkResult='yes'):
+                - inHouseNumber: equivalent to input->houseNumber
+                - lpostHouseNbr: "housenumber" provided by libpostal receiving concatenation of street and house number (from input)
+                - lpostUnit: "unit"  provided by libpostal receiving concatenation of street and house number (from input)
+            - work: some metadata describing geocoding process:
+                - transformedAddress: what address (after possibly some sequence of transformations) is actually sent to Nominatim
+                - method: which transformation methods were used before sending the address to Nominatim. If the address was found without any transformation, will be "orig" (or "fast")
+                - osmOrder: what was the rank of this result in Nominatim result (more usefull in 'rejected' part)
+                - retryOn_26: If placeRank in match record is below 30 and housenumber (in input) contains other characters than digits, we retry to call Nominatim by only considering the first digits of housenumber: "30A","30.3", "30 bt 2", "30-32" become "30". If it gives a result with place_rank = 30, we keep it (in this case, a "cleansedHouseNbr" appears in the output, with "30" in this example), and this field is set to "True"
+            - nominatim: selection of fields received from Nominatim:
+                - lat
+                - lon
+                - placeRank
+                - displayName
+                - all fields in the "address" bloc
+            - check:  Check results indicators (if checkResult='yes'):
                 - SIMStreetWhich
                 - SIMStreet
                 - SIMCity
                 - SIMZip
                 - SIMHouseNbr
-             - Other information:
-                - method: which transformation methods were used before sending the address to Nominatim. If the address was found without any transformation, will be "orig" (or "fast" if FASTMODE is activated at server level)
-                - osmAddrIn: what address (after possibly some sequence of transformation) is actually sent to Nominatim
-                - inHouseNbr:  house number given in input
-                - lpostHouseNbr: "housenumber" provided by libpostal receiving concatenation of street and house number (from input)
-                - lpostUnit: "unit"  provided by libpostal receiving concatenation of street and house number (from input)
+                
         - reject: list of rejected results, with most of the same fields, with additionnal fields:
              - rejectReason: 'mismatch" or "tail"
              - distToMatch: distance (in kilometer) to the result given in "match"
@@ -400,9 +410,10 @@ class Search(Resource):
                city_field     : get_arg(city_field[1],        ""),
                postcode_field : get_arg(postcode_field[1],    ""),
                country_field  : get_arg(country_field[1],     ""),
+               addr_key_field  : get_arg(addr_key_field[1],     ""),
               }
-        
-        
+
+
         used_fields = list(filter(lambda x: data[x]!="", data))
 
         vlog(f"used_fields: {used_fields}")
@@ -450,10 +461,10 @@ class Search(Resource):
                               fastmode=fastmode,
                               transformers_sequence=transformers_sequence)
 
-        
+
         log(f"Result: {res}")
-       
-        
+
+
         update_timestats("global", start_time)
 
         if with_timing_info:
@@ -461,19 +472,12 @@ class Search(Resource):
 
         if not with_rejected and "rejected" in res:
             del res["rejected"]
-       
+
+
         if "error" in res:
             return res, 500
 
         return_code = 200 if ("match" in res and len(res["match"])>0) or ("rejected" in res and len(res["rejected"])>0) else 204
-
-
-
-        # for part in ['match', 'reject']:
-        #     if part in res:
-        #         for i in range(len(res[part])):
-        #             res[part][i] = convert_street_components(res[part][i])
-
 
         return to_camel_case(res), return_code
 
@@ -494,9 +498,9 @@ A CSV file with the following columns:
 - country
 - addrKey (must be unique)""")
 
-batch_parser.add_argument('mode',               
-                          type=str, 
-                          choices=('geo', 'short', 'long'), 
+batch_parser.add_argument('mode',
+                          type=str,
+                          choices=('geo', 'short', 'long'),
                           default='short',
                           help="""
 Selection of columns in the ouput :
@@ -544,44 +548,44 @@ class Batch(Resource):
 
         Returns
         -------
-        A json (list of dictionaries) containing geocoded addresses. Depending of parameter 'mode', following fields could be found:
+        A json dictionary of the shape {'match': [<list of dictionaries>]} containing geocoded addresses. Depending of parameter "mode", following fields could be found:
+        In 'long' mode, each record will contain the following blocs:
 
-- In 'geo' mode:
-    - Results coming straight from Nominatim:
-        - lat
-        - lon
-        - placeRank
-    - Other fields:
-        - addrKey: from input
-        - method : which transformation methods were used before sending the address to Nominatim. If the address was found without any transformation, will be "orig" (or "fast")
-- In 'short' mode, additional fields:
-    - Results comming straight from Nominatim:
-        - placeId
-    - Structured address (in addressOut):
-         - streetName: first non null value in ["road", "pedestrian","footway", "cycleway", "path", "address27", "construction", "hamlet", "park"]
-        - houseNumber: house_number
-        - postCode: postcode
-        - city: first non null value in ["town", "village", "city_district", "county", "city"],
-        - country: country
-        - other: concatenate all values which were not picked by one of the above item
-    - Other fields:
-        - inHouseNbr:  house number given in input
-        - lpostHouseNbr: "housenumber" provided by libpostal receiving concatenation of street and house number (from input)
-        - lpostUnit: "unit"  provided by libpostal receiving concatenation of street and house number (from input)
-- In 'long' mode, additional fields:
-    - All columns present in input will appear in output
+- input : all columns present in input data, but at least "addrKey", "streetName", "houseNumber", "postCode", "city", "country"
+- output: consolidated result of geocoding :
+    - streetName: first non null value in ["road", "pedestrian","footway", "cycleway", "path", "address27", "construction", "hamlet", "park"]
+    - houseNumber: house_number
+    - postCode: postcode
+    - city: first non null value in ["town", "village", "city_district", "county", "city"],
+    - country: country
+    - other: concatenate all values which were not picked by one of the above item
+    - inHouseNumber: equivalent to input->houseNumber
+    - lpostHouseNbr: "housenumber" provided by libpostal receiving concatenation of street and house number (from input)
+    - lpostUnit: "unit"  provided by libpostal receiving concatenation of street and house number (from input)
+- work: some metadata describing geocoding process:
+    - transformedAddress: what address (after possibly some sequence of transformations) is actually sent to Nominatim
+    - method: which transformation methods were used before sending the address to Nominatim. If the address was found without any transformation, will be "orig" (or "fast")
+    - osmOrder: what was the rank of this result in Nominatim result (more usefull in 'rejected' part)
+    - retryOn_26: If placeRank in match record is below 30 and housenumber (in input) contains other characters than digits, we retry to call Nominatim by only considering the first digits of housenumber: "30A","30.3", "30 bt 2", "30-32" become "30". If it gives a result with place_rank = 30, we keep it (in this case, a "cleansedHouseNbr" appears in the output, with "30" in this example), and this field is set to "True"
+- nominatim: selection of fields received from Nominatim:
+    - lat
+    - lon
+    - placeRank
     - displayName
-    - Check results indicators (if checkResult='yes'):
-        - SIMStreetWhich
-        - SIMStreet
-        - SIMCity
-        - SIMZip
-        - SIMHouseNbr
-    - osmAddrIn: what address (after possibly some sequence of transformations) is actually sent to Nominatim
-    - retryOn26: If placeRank in match record is below 30 and housenumber (in input) contains other characters than digits, we retry to call Nominatim by only considering the first digits of housenumber: "30A","30.3", "30 bt 2", "30-32" become "30". If it gives a result with place_rank = 30, we keep it (in this case, a "cleansedHouseNbr" appears in the output, with "30" in this example), and this field is set to "True"
+    - all fields in the "address" bloc
+- check:  Check results indicators (if checkResult='yes'):
+    - SIMStreetWhich
+    - SIMStreet
+    - SIMCity
+    - SIMZip
+    - SIMHouseNbr
+        
+In 'geo' mode: only 'lat', 'lon', and 'placeRank' values from 'nominatim', 'addrKey' from 'input', and 'method' from 'work'
+
+In 'short' mode: idem as 'geo', plus full 'output' bloc
 
 
-If "withRejected=yes", an additional field with all rejected records is added, with the same field selection as above, according to "mode", plus one additional fields, 'reject_reason'. Equal to:
+If "withRejected=yes", an additional field 'rejected' with all rejected records is added, with the same field selection as above, according to "mode", plus one additional fields, 'rejectReason'. Equal to:
 - 'mismatch' if 'checkResult=yes', and this result is "too far away" from the original value
 - 'tail' if it was just not the first record.
 
@@ -620,7 +624,7 @@ If "withRejected=yes", an additional field with all rejected records is added, w
         #log(key_name)
         try:
             df = pd.read_csv(request.files[key_name], dtype=str)
-                          
+
         except UnicodeDecodeError as ude:
             log("Could not parse file, try to decompress...")
             log(ude)
@@ -657,36 +661,34 @@ If "withRejected=yes", an additional field with all rejected records is added, w
 
         if res is None or res.shape[0] == 0:
             return [], 204
-        
-        
+
+
         res = res.reset_index(drop=True)
-        
-        
+
+
         for field, f_type in [("place_id", int), ("place_rank", int), ("lat", float), ("lon", float)]:
             res[("nominatim", field)] = res[("nominatim", field)].astype(f_type)
             if ("nominatim", field) in rejected_addresses:
                 rejected_addresses[("nominatim", field)] = rejected_addresses[("nominatim", field)].astype(f_type)
-            
 
         try:
-            
+
             if mode == "geo":
                 fields= [addr_key_field, ("nominatim", "lat"), ("nominatim", "lon"), ("nominatim", "place_rank"), ("work", "method")]
                 res = res[fields]
                 rejected_addresses = rejected_addresses[ [ f for f in fields if f in rejected_addresses ] ]
             elif mode == "short":
                 fields=[addr_key_field,
-                           ("nominatim", "lat"), ("nominatim", "lon"), ("nominatim", "place_rank"), ("nominatim", "place_id"), ("work", "method"),  
-                            ("output", street_field), ("output", housenbr_field), ("output",postcode_field), ("output", city_field), ("output", country_field),
-                        
-                            "in_house_nbr", "lpost_house_nbr", "lpost_unit" ]
-
+                           ("nominatim", "lat"), ("nominatim", "lon"), ("nominatim", "place_rank"), ("nominatim", "place_id"), ("work", "method"),
+                            ] + [("output", f) for f in res[("output")].columns]
+    
                 res = df.merge(res)[fields]
+                
                 rejected_addresses = rejected_addresses[[ f for f in fields if f in rejected_addresses ]]
             elif mode == "long":
                 pass
 
-            
+
         except KeyError as ex:
             log(f"Error during column selection: {ex}")
             traceback.print_exc(file=sys.stdout)
@@ -694,16 +696,12 @@ If "withRejected=yes", an additional field with all rejected records is added, w
         log("Output: \n"+res.iloc[:, 0:9].to_string(max_rows=9))
 
         res = multiindex_to_dict(res)
-            
-        if with_rejected:
-            
-            rejected_addresses = multiindex_to_dict(rejected_addresses)
-            
-            
-            res = {"match":res,
-                   "rejected": rejected_addresses}
-
         
+        res= {'match': res}
+        if with_rejected:
+            rejected_addresses = multiindex_to_dict(rejected_addresses)
+
+            res["rejected"] = rejected_addresses
 
         res = to_camel_case(res)
 

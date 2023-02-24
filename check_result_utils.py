@@ -13,7 +13,7 @@ import unicodedata
 import os
 
 import pandas as pd
-import numpy as np
+#import numpy as np
 
 import jellyfish
 
@@ -244,7 +244,7 @@ def fingerprint(column):
 
 
 
-# TODO : replacement seulement si dans les 2 inputs en même temps  
+# TODO : replacement seulement si dans les 2 inputs en même temps
 # --> Pour éviter que "Avenue Louise" et "Place Louise" aient une similarité de 100%
 
 def_street_compare_removes = [r"\([A-Z.]+\)",
@@ -371,15 +371,15 @@ def street_compare(street1, street2):
         street1_split[ai] = street1_split[ai].str.replace( r"[^A-Z ]+", " ",regex=True).str.replace(" [ ]+", " ",regex=True).str.strip()
 
         fingerprints1[ai]= fingerprint(street1_split[ai])
-        
+
     fingerprints2 = pd.DataFrame(columns = street2_split.columns)
     for bi in range(street2_split.shape[1]):
         street2_split[bi] = street2_split[bi].str.upper().apply(remove_accents)
         street2_split[bi] = street2_split[bi].str.replace( r"[^A-Z ]+", " ",regex=True).str.replace(" [ ]+", " ",regex=True).str.strip()
         fingerprints2[bi]= fingerprint(street2_split[bi])
-        
-        
-        
+
+
+
     street_distances = pd.DataFrame()
     for ai in range(street1_split.shape[1]):
         str_a = street1_split[ai]#.str.upper().apply(remove_accents)
@@ -524,16 +524,16 @@ def ignore_mismatch_keep_bests(addr_matches,
     for street_field_a in street_fields_a :
         # Only compute a new street distance if the computed distance is below the threshold so far
         x = (distances[("check","SIM_street")] < similarity_threshold)
-        
+
         distances[("check","SIM_street")] = distances[("check","SIM_street")].where(~x, street_compare(addr_matches[street_field_a][x].fillna(""), street_b[x]))
-        
+
         distances[("check","SIM_street_which")] =  distances[("check","SIM_street_which")].where(~x,street_field_a[1]) # last field that has been compared
 
     wsu = " ; ".join([f"{r}: {c}" for r, c in distances[distances[("check", "SIM_street")] >= similarity_threshold][("check","SIM_street_which")].value_counts().items()])
     vlog(f"Which street used: {wsu}")
 
 
-    w = distances[(distances[("check","SIM_street")] >= similarity_threshold)&(distances[("check","SIM_street_which")]!=street_fields_a[0] )].merge(addr_matches, left_index=True, right_index=True)
+    #w = distances[(distances[("check","SIM_street")] >= similarity_threshold)&(distances[("check","SIM_street_which")]!=street_fields_a[0] )].merge(addr_matches, left_index=True, right_index=True)
 
     distances[("check","SIM_house_nbr")] = house_number_compare(addr_matches[housenbr_field_a].fillna(""), addr_matches[housenbr_field_b].fillna(""))
 
@@ -543,16 +543,16 @@ def ignore_mismatch_keep_bests(addr_matches,
 
     elimination_rule = ((distances[("check","SIM_zip")] < 0.1) & (distances[("check","SIM_city")] < similarity_threshold)) |                         ((distances[("check","SIM_street")] < similarity_threshold)  )
 
-    
-    
+
+
     rejected = addr_matches[elimination_rule].merge(distances, left_index=True, right_index=True).copy()
 
     rejected[("work","reject_reason")] = "mismatch"
-    
-    
+
+
     # Remove non acceptable results
     result = addr_matches[~elimination_rule].merge(distances, left_index=True, right_index=True).sort_values([addr_key_field, ("check","SIM_street"), ("check","SIM_house_nbr"), secondary_sort_field], ascending=[True, False, False, True])
-    
+
     vlog("result:")
     vlog(result)
     # Keep only the first ones
@@ -597,7 +597,7 @@ def match_parent(osm_results, osm_reject):
     final_rejected = osm_reject[(osm_reject[("work", "reject_reason")] == "mismatch") &
                                 (~osm_reject[addr_key_field].isin(osm_results[addr_key_field]))]
 
-    
+
     final_rejected = final_rejected.drop(("work", "reject_reason"), axis=1)
     # Get parent place id from place id calling get_osm_details
     parent_place_id = final_rejected[("nominatim", "place_id")].apply(get_osm_details).apply(lambda x: (x["parent_place_id"] if "parent_place_id" in x else 0 ))
@@ -614,16 +614,16 @@ def match_parent(osm_results, osm_reject):
 
     if alt_names.shape[0] >0 and alt_names[alt_names[1] == "highway"].shape[0] >0 :
         alt_names = alt_names[alt_names[1] == "highway"]
-        
-        
+
+
         alt_names = alt_names[0].apply(pd.Series).stack().reset_index(1)#.rename(columns= {0: ("nominatim", "alt_names")})
-        
-    
+
+
         alt_names.columns = pd.MultiIndex.from_tuples([("nominatim", "lang"),("nominatim", "alt_names")], names=["L0", "L1"])
-        
-    
+
+
         alt_names = final_rejected.merge(alt_names, left_index=True, right_index=True)
-        
+
 
         # Keep only alt names that are different from street name
         alt_names = alt_names[alt_names[("output", "street_name")] != alt_names[("nominatim", "alt_names")]]
@@ -641,7 +641,7 @@ def match_parent(osm_results, osm_reject):
                                       postcode_field_b = postcode_field,
                                       city_field_b = city_field)
 
-        
+
 
         osm_results = pd.concat([osm_results, keep], sort=False)
     #     print(osm_reject.shape)
@@ -686,7 +686,7 @@ def osm_keep_relevant_results(osm_results, addresses, max_res=1):
         or not the first result.
 
     """
-    
+
     osm_results_street = osm_results.merge(addresses[[addr_key_field, street_field,#reset_index().
                                                                     postcode_field, housenbr_field,
                                                                     city_field, country_field]],
