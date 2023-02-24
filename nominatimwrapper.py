@@ -34,7 +34,7 @@ import gzip
 
 
 from flask import Flask,  request, url_for
-from flask_restplus import Api, Resource, reqparse
+from flask_restx import Api, Resource, reqparse
 
 import werkzeug
 
@@ -51,7 +51,9 @@ from utils import (parse_address,
                                   postcode_field, city_field, country_field,
                                   process_address, process_addresses,
                                   update_timestats, timestats, to_camel_case,
-                                  convert_street_components, remove_empty_values)
+                   #               convert_street_components, 
+                                   remove_empty_values, 
+                                   multiindex_to_dict)
 
 
 from config import osm_host, libpostal_host, photon_host, default_transformers_sequence, city_test_from, city_test_to
@@ -74,6 +76,11 @@ elif env_log_level == "HIGH":
     logger.setLevel(logging.DEBUG)
 else :
     print(f"Unkown log level '{env_log_level}'. Should be LOW/MEDIUM/HIGH")
+
+logging.getLogger("requests").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
+
+
 
 
 with_timing = os.getenv('TIMING', "NO").upper().strip()
@@ -118,7 +125,7 @@ vlog(transformers_sequence)
 
 # Check that Nominatim server is running properly
 # Adapt with the city of your choice!
-delay=5
+delay=2
 for i in range(10):
     osm = None
     try:
@@ -139,6 +146,7 @@ for i in range(10):
 
         #raise e
         time.sleep(delay)
+        delay+=0.5
 if i == 9:
     log("Nominatim not up & running !")
     log(f"Nominatim: {osm_host}")
@@ -146,7 +154,7 @@ if i == 9:
 
 
 # Check that Libpostal is running properly
-delay=5
+delay=2
 for i in range(10):
     lpost=None
     try:
@@ -163,6 +171,7 @@ for i in range(10):
             log(lpost)
 
         time.sleep(delay)
+        delay+=0.5
     #raise e
 if i == 9:
     log("Libpostal not up & running !")
@@ -172,7 +181,7 @@ if i == 9:
 
 
 # Check that Photon server is running properly
-delay=5
+delay=2
 for i in range(10):
     try:
         phot=""
@@ -188,6 +197,7 @@ for i in range(10):
         log(f"Try again in {delay} seconds")
         log(phot)
         time.sleep(delay)
+        delay+=0.5
 
         #raise e
 if i == 9:
@@ -385,15 +395,17 @@ class Search(Resource):
 
         address = get_arg("fullAddress",  "")
         data= {
-               street_field   : get_arg(street_field,      ""),
-               housenbr_field : get_arg(housenbr_field,    ""),
-               city_field     : get_arg(city_field,        ""),
-               postcode_field : get_arg(postcode_field,    ""),
-               country_field  : get_arg(country_field,     ""),
+               street_field   : get_arg(street_field[1],      ""),
+               housenbr_field : get_arg(housenbr_field[1],    ""),
+               city_field     : get_arg(city_field[1],        ""),
+               postcode_field : get_arg(postcode_field[1],    ""),
+               country_field  : get_arg(country_field[1],     ""),
               }
-
+        
+        
         used_fields = list(filter(lambda x: data[x]!="", data))
 
+        vlog(f"used_fields: {used_fields}")
 
         error_msg = "Invalid value for '%s'. Possible values are 'yes' or 'no'"
         with_rejected = get_yesno_arg("withRejected", "no")
@@ -429,7 +441,7 @@ class Search(Resource):
         log(f"osm_structured:  {osm_structured}")
         log(f"extra_house_nbr: {with_extra_house_number}")
 
-
+        log(f"Input: {data}")
 
         res = process_address(data,
                               check_results=check_results,
@@ -438,30 +450,29 @@ class Search(Resource):
                               fastmode=fastmode,
                               transformers_sequence=transformers_sequence)
 
-        log(f"Input: {data}")
+        
         log(f"Result: {res}")
-
+       
+        
         update_timestats("global", start_time)
 
         if with_timing_info:
             res["timing"] = {k: v.total_seconds()*1000 for k, v in timestats.items()}
 
-        if not with_rejected and "reject" in res:
-            del res["reject"]
-
+        if not with_rejected and "rejected" in res:
+            del res["rejected"]
+       
         if "error" in res:
             return res, 500
 
-        return_code = 200 if ("match" in res and len(res["match"])>0) or ("reject" in res and len(res["reject"])>0) else 204
+        return_code = 200 if ("match" in res and len(res["match"])>0) or ("rejected" in res and len(res["rejected"])>0) else 204
 
 
 
-        for part in ['match', 'reject']:
-            if part in res:
-                for i in range(len(res[part])):
-                    res[part][i] = convert_street_components(res[part][i])
-
-
+        # for part in ['match', 'reject']:
+        #     if part in res:
+        #         for i in range(len(res[part])):
+        #             res[part][i] = convert_street_components(res[part][i])
 
 
         return to_camel_case(res), return_code
@@ -498,7 +509,7 @@ batch_parser.add_argument('withRejected',
                           type=str,
                           choices=('yes', 'no'),
                           default='no',
-                          help='if "yes", rejected results are returned',
+                          help='if "yes", rejected results are returned')
 
 batch_parser.add_argument('checkResult',
                           type=str,
@@ -609,6 +620,7 @@ If "withRejected=yes", an additional field with all rejected records is added, w
         #log(key_name)
         try:
             df = pd.read_csv(request.files[key_name], dtype=str)
+                          
         except UnicodeDecodeError as ude:
             log("Could not parse file, try to decompress...")
             log(ude)
@@ -619,16 +631,18 @@ If "withRejected=yes", an additional field with all rejected records is added, w
 
             df = pd.read_csv(g_f, dtype=str)
 
+        old_col_idx = df.columns.to_frame()
+        old_col_idx.insert(0, 'L0', ["input"]*df.columns.shape[0])
+        df.columns= pd.MultiIndex.from_frame(old_col_idx, names=["L0", "L1"])
 
         log("Input: \n" + df.to_string(max_rows=10))
-
         mandatory_fields = [street_field, housenbr_field , postcode_field , city_field, addr_key_field, country_field]
         for field in mandatory_fields:
             if field not in df:
-                return [{"error": f"Field '{field}' mandatory in file. All mandatory fields are {';'.join(mandatory_fields)}"}], 400
+                return [{"error": f"Field '{field[1]}' mandatory in file. All mandatory fields are {';'.join([f[1] for f in mandatory_fields])}"}], 400
 
         if df[df[addr_key_field].duplicated()].shape[0]>0:
-            return [{"error": f"Field '{addr_key_field}' cannot contain duplicated values!"}], 400
+            return [{"error": f"Field '{addr_key_field[1]}' cannot contain duplicated values!"}], 400
 
         res, rejected_addresses = process_addresses(df,
                                                     check_results=check_results,
@@ -643,59 +657,55 @@ If "withRejected=yes", an additional field with all rejected records is added, w
 
         if res is None or res.shape[0] == 0:
             return [], 204
-
-        res["place_id"] = res["place_id"].astype(int)
-        res["place_rank"] = res["place_rank"].astype(int)
-        rejected_addresses["place_id"] = rejected_addresses["place_id"].astype(int)
-        rejected_addresses["place_rank"] = rejected_addresses["place_rank"].astype(int)
-
-
+        
+        
+        res = res.reset_index(drop=True)
+        
+        
+        for field, f_type in [("place_id", int), ("place_rank", int), ("lat", float), ("lon", float)]:
+            res[("nominatim", field)] = res[("nominatim", field)].astype(f_type)
+            if ("nominatim", field) in rejected_addresses:
+                rejected_addresses[("nominatim", field)] = rejected_addresses[("nominatim", field)].astype(f_type)
+            
 
         try:
-            res = df.merge(res, how="left")
-
+            
             if mode == "geo":
-                fields= [addr_key_field,"lat", "lon", "place_rank", "method"]
+                fields= [addr_key_field, ("nominatim", "lat"), ("nominatim", "lon"), ("nominatim", "place_rank"), ("work", "method")]
                 res = res[fields]
                 rejected_addresses = rejected_addresses[ [ f for f in fields if f in rejected_addresses ] ]
             elif mode == "short":
                 fields=[addr_key_field,
-                           "lat", "lon", "place_rank", "method", "place_id",
-                           "addr_out_street", "addr_out_number", "in_house_nbr", "lpost_house_nbr", "lpost_unit", "addr_out_postcode", "addr_out_city", "addr_out_country", "addr_out_other" ]
+                           ("nominatim", "lat"), ("nominatim", "lon"), ("nominatim", "place_rank"), ("nominatim", "place_id"), ("work", "method"),  
+                            ("output", street_field), ("output", housenbr_field), ("output",postcode_field), ("output", city_field), ("output", country_field),
+                        
+                            "in_house_nbr", "lpost_house_nbr", "lpost_unit" ]
 
                 res = df.merge(res)[fields]
                 rejected_addresses = rejected_addresses[[ f for f in fields if f in rejected_addresses ]]
             elif mode == "long":
                 pass
 
-
-            if with_rejected:
-                rejected_rec = rejected_addresses.groupby(addr_key_field).apply(lambda rec: remove_empty_values( rec.to_dict(orient="records")) ).rename("reject").reset_index()
-                res = res.merge(rejected_rec, how="outer")
-                res["reject"] = res["reject"].apply(lambda rec: rec if isinstance(rec, list) else [])
-
-            res["lat"] = res["lat"].astype(float)
-            res["lon"] = res["lon"].astype(float)
+            
         except KeyError as ex:
             log(f"Error during column selection: {ex}")
             traceback.print_exc(file=sys.stdout)
 
         log("Output: \n"+res.iloc[:, 0:9].to_string(max_rows=9))
 
-        res = res.to_dict(orient="records")
+        res = multiindex_to_dict(res)
+            
+        if with_rejected:
+            
+            rejected_addresses = multiindex_to_dict(rejected_addresses)
+            
+            
+            res = {"match":res,
+                   "rejected": rejected_addresses}
 
-
-        if mode != "geo":
-            for i in range(len(res)):
-                res[i] = convert_street_components(res[i])
-
-                if "reject" in res[i]:
-                    for j in range(len(res[i]["reject"])):
-                        res[i]["reject"][j] = convert_street_components(res[i]["reject"][j])
+        
 
         res = to_camel_case(res)
-
-        #log(res)
 
         return res, 200
 

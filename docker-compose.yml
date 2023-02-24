@@ -28,11 +28,11 @@ services:
     ports:
       - "5000:5000"
     environment:
-      - NB_WORKERS=4
+      - NB_WORKERS=1
       - PHOTON_HOST=photon:2322
       - LPOST_HOST=libpostal:7000
       - OSM_HOST=10.1.0.45:8080 #172.17.0.2:8080 #172.17.0.2:8080  #10.1.0.45:7070
-      - LOG_LEVEL=high
+      - LOG_LEVEL=medium
       - TIMING=no
       - FASTMODE=yes
 

@@ -59,12 +59,14 @@ else :
     logging.info("Use default libpostal host: %s", libpostal_host)
 
 
-street_field  = "streetName"
-housenbr_field = "houseNumber"
-postcode_field = "postCode"
-city_field  =    "city"
-country_field =  "country"
-addr_key_field = "addrKey"
+street_field  =  ("input", "streetName")
+housenbr_field = ("input", "houseNumber")
+postcode_field = ("input", "postCode")
+city_field  =    ("input", "city")
+country_field =  ("input", "country")
+addr_key_field = ("input", "addrKey")
+
+transformed_address_field = ("work", "transformed_address")
 
 regex_replacements = {
     "init": [
@@ -111,12 +113,12 @@ default_transformers_sequence = [ ["orig"],
 
 # Mapping of nominatim results fields on our output fields
 collapse_params = {
-    "addr_out_street":   ["road", "pedestrian","footway", "cycleway",
+    ("output", "street_name"):     ["road", "pedestrian","footway", "cycleway",
                           "path", "address27", "construction", "hamlet", "park"],
-    "addr_out_city"  :   ["town", "village", "city_district", "county", "city"],
-    "addr_out_number":   ["house_number"],
-    "addr_out_country":  ["country"],
-    "addr_out_postcode": ["postcode"],
+    ("output", "city")  :   ["town", "village", "city_district", "county", "city"],
+    ("output", "house_number"):    ["house_number"],
+    ("output", "country"):         ["country"],
+    ("output", "post_code"):       ["postcode"],
 }
 
 

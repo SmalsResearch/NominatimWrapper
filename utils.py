@@ -39,6 +39,7 @@ from config import (addr_key_field,
                     postcode_field,
                     city_field,
                     country_field,
+                    transformed_address_field,
                     regex_replacements,
                     collapse_params)
 
@@ -156,7 +157,7 @@ def retry_with_low_place_rank(osm_results, sent_addresses,
 
     start_time = datetime.now()
     vlog("Trying to improve place_rank with place_rank < 30 by cleansed house number ")
-    sent_addresses_26 = osm_results[osm_results.place_rank < 30]
+    sent_addresses_26 = osm_results[osm_results[("nominatim", "place_rank")] < 30]
 
     if sent_addresses_26.shape[0]>0:
         sent_addresses_26 = sent_addresses_26.merge(sent_addresses)#[osm_addresses.place_rank == 26]
@@ -164,34 +165,36 @@ def retry_with_low_place_rank(osm_results, sent_addresses,
         vlog(f"    - <30: {sent_addresses_26.shape[0]}")
         sent_addresses_26 = sent_addresses_26[~sent_addresses_26[housenbr_field].fillna("").astype(str).str.match("^[0-9]*$")]
         vlog(f"    - numbers: {sent_addresses_26.shape[0]}")
-
-        sent_addresses_26[housenbr_field] = sent_addresses_26[housenbr_field].fillna("").astype(str).str.extract("^([0-9]+)")[0]
-
-        sent_addresses_26["osm_addr_in"] =   sent_addresses_26[street_field  ].fillna("") + ", "+\
+        
+        sent_addresses_26 = sent_addresses_26.fillna("").astype(str)
+        sent_addresses_26[housenbr_field] = sent_addresses_26[housenbr_field].str.extract("^([0-9]+)")[0]
+        
+        sent_addresses_26[transformed_address_field] =   sent_addresses_26[street_field  ].fillna("") + ", "+\
                 sent_addresses_26[housenbr_field].fillna("") +", " + \
                 sent_addresses_26[postcode_field].fillna("") +" " +\
                 sent_addresses_26[city_field    ].fillna("") +", "+\
                 sent_addresses_26[country_field].fillna("")
 
-        sent_addresses_26["osm_addr_in"]= sent_addresses_26["osm_addr_in"].apply(clean_addr_in)
+        sent_addresses_26[transformed_address_field]= sent_addresses_26[transformed_address_field].apply(clean_addr_in)
 
 
 
-        vlog(" ; ".join([f"rank {r}: {c}" for r, c in sent_addresses_26.place_rank.value_counts().iteritems()]))
+        vlog(" ; ".join([f"rank {r}: {c}" for r, c in sent_addresses_26[("nominatim", "place_rank")].value_counts().items()]))
         #print(osm_results_26.place_rank.value_counts())
         osm_results_26, _ = process_osm(sent_addresses_26,
-                                                  osm_addr_field="osm_addr_in",
+                                                  osm_addr_field=transformed_address_field,
                                                   check_results=check_results,
                                                   osm_structured=osm_structured)
 
         if osm_results_26.shape[0]>0:
-            pr_str=" ; ".join([f"rank {r}: {c}" for r, c in osm_results_26.place_rank.value_counts().iteritems()])
+            pr_str=" ; ".join([f"rank {r}: {c}" for r, c in osm_results_26[("nominatim", "place_rank")].value_counts().items()])
             vlog(f"     - New results with place_rank == 30 after cleansing ({pr_str}):")
 
-            osm_results_26 = osm_results_26[osm_results_26.place_rank == 30]
-            osm_results_26["retry_on_26"] = True
+            osm_results_26 = osm_results_26[osm_results_26[("nominatim", "place_rank")] == 30]
+            osm_results_26[("work", "retry_on_26")] = True
 
-            osm_results = osm_results[~osm_results[addr_key_field].isin(osm_results_26[addr_key_field])].append(osm_results_26, sort=False)
+            osm_results = pd.concat([osm_results[~osm_results[addr_key_field].isin(osm_results_26[addr_key_field])],
+                                     osm_results_26], sort=False)
 
     update_timestats("t&p > process > retry_low_rank", start_time)
 
@@ -227,17 +230,14 @@ def get_lpost_house_number(street):
     return [housenbr, boxnbr]
 
 
-def add_extra_house_number(osm_addresses, addresses):
+def add_extra_house_number(osm_addresses):
     """
-    For all addresses in "addresses" (and their corresponding OSM results in
-    osm_addresses), call libpostal to extract housenumbers
+    For all addresses in input fields of "osm_addresses", call libpostal to extract housenumbers
 
     Parameters
     ----------
     osm_addresses : pd.DataFrame
         Output of process_osm.
-    addresses : pd.DataFrame
-        input addresses.
 
     Returns
     -------
@@ -249,23 +249,30 @@ def add_extra_house_number(osm_addresses, addresses):
 
     """
     vlog("Start adding extra house number")
-
+    
     start_time = datetime.now()
 
-    if "addr_out_number" not in osm_addresses:
-        return osm_addresses
-
-    result = osm_addresses.merge(addresses)
-    result["in_house_nbr"] = result[housenbr_field]
+    #log(osm_addresses)
+#    if housenbr_field not in osm_addresses:
+#        log(f"Do not find {housenbr_field} in osm_addresses")
+#        log(osm_addresses)
+#        return osm_addresses
+    
+    result = osm_addresses
+    
+    
+    
+    result[("output", "in_house_nbr")] = result[housenbr_field]
 
     lp = result.fillna("").apply(lambda row: get_lpost_house_number(f"{row[street_field]} {row[housenbr_field]}, {row[postcode_field]} {row[city_field]}".strip()), axis=1,  result_type ='expand')
 
-    result[["lpost_house_nbr", "lpost_unit"]] = lp
+    result[[("output","lpost_house_nbr"), ("output","lpost_unit")]] = lp
 
+    
     vlog("End of adding extra house number")
     update_timestats("extra_hn", start_time)
-
-    return result[np.concatenate([osm_addresses.keys(), ["in_house_nbr", "lpost_house_nbr", "lpost_unit"]])]
+    
+    return result
 
 
 def clean_addr_in(addr_in):
@@ -333,7 +340,7 @@ def transform_and_process(to_process_addresses, transformers,
         vlog("No more addresses!")
         step_stats = {"method": method, "todo":  0, "sent": 0, "match": 0, "match_26": 0,
                       "reject_rec" :0, "reject_addr": 0, "reject_mism": 0}
-        return pd.DataFrame(columns=[addr_key_field]), pd.DataFrame(columns=[addr_key_field, "reject_reason"]), step_stats
+        return pd.DataFrame(columns=[addr_key_field]), pd.DataFrame(columns=[addr_key_field, ("work", "reject_reason")]), step_stats
 
 
     transformed_addresses = apply_transformers(to_process_addresses, transformers,
@@ -343,23 +350,23 @@ def transform_and_process(to_process_addresses, transformers,
     if transformed_addresses.shape[0]==0:
         vlog("No more addresses for this transformers sequence!")
         step_stats = {"method": method, "todo":  0, "sent": 0, "match": 0, "match_26": 0, "reject_rec" :0, "reject_addr": 0, "reject_mism": 0}
-        return pd.DataFrame(columns=[addr_key_field]), pd.DataFrame(columns=[addr_key_field, "reject_reason"]), step_stats
+        return pd.DataFrame(columns=[addr_key_field]), pd.DataFrame(columns=[addr_key_field, ("work", "reject_reason")]), step_stats
 
-    transformed_addresses["osm_addr_in"] =   transformed_addresses[street_field  ].fillna("") + ", "+\
+    transformed_addresses[transformed_address_field] =   transformed_addresses[street_field].fillna("") + ", "+\
                                              transformed_addresses[housenbr_field].fillna("") + ", "+\
                                              transformed_addresses[postcode_field].fillna("") + " " +\
-                                             transformed_addresses[city_field    ].fillna("") + ", "+\
-                                             transformed_addresses[country_field ].fillna("")
+                                             transformed_addresses[city_field   ].fillna("") + ", "+\
+                                             transformed_addresses[country_field].fillna("")
 
 
-    transformed_addresses["osm_addr_in"]= transformed_addresses["osm_addr_in"].apply(clean_addr_in)
+    transformed_addresses[transformed_address_field]= transformed_addresses[transformed_address_field].apply(clean_addr_in)
 
 
 
     if check_with_transformed :
         sent_addresses = transformed_addresses
     else:
-        sent_addresses = transformed_addresses[["osm_addr_in", addr_key_field]].merge(to_process_addresses, on=addr_key_field)
+        sent_addresses = transformed_addresses[[transformed_address_field, addr_key_field]].merge(to_process_addresses, on=addr_key_field)
 
     vlog(f"Will process {sent_addresses.shape[0]} addresses for : transformers = {'+'.join(transformers)}")
 
@@ -370,7 +377,7 @@ def transform_and_process(to_process_addresses, transformers,
 
     start_time = datetime.now()
     osm_results, rejected = process_osm(sent_addresses,
-                                        osm_addr_field="osm_addr_in",
+                                        osm_addr_field=transformed_address_field,
                                         check_results=check_results,
                                         osm_structured=osm_structured)
 
@@ -380,17 +387,19 @@ def transform_and_process(to_process_addresses, transformers,
                                                 check_results=check_results)
 
     update_timestats("t&p > process", start_time)
-    osm_results["method"] = method
-    rejected["method"] = method
+    osm_results[("work", "method")] = method
+    rejected[("work", "method")] = method
 
+    #log(rejected)
+    
     step_stats = {"method": method,
       "todo":        to_process_addresses.shape[0],
       "sent":        sent_addresses.shape[0],
       "match":       osm_results.shape[0],
-      "match_26":    osm_results["retry_on_26"].sum() if "retry_on_26" in osm_results else 0,
+      "match_26":    osm_results[("work", "retry_on_26")].sum() if ("work", "retry_on_26") in osm_results else 0,
       "reject_rec" : rejected.shape[0],
       "reject_addr": rejected[addr_key_field].nunique(),
-      "reject_mism": rejected[rejected.reject_reason == "mismatch"][addr_key_field].nunique(),
+      "reject_mism": rejected[rejected[("work", "reject_reason")] == "mismatch"][addr_key_field].nunique() if rejected.shape[0]>0 else 0,
      }
 
     return osm_results, rejected, step_stats
@@ -437,7 +446,7 @@ def process_osm(df, osm_addr_field, accept_language="",
         - One with rejected addresses, with
             - "rejected_reason" == "tail" if they were in the OSM results, but
               were not the first result
-            - "rejected_reason" == "reject" if the were rejected as too far
+            - "rejected_reason" == "mismatch" if the were rejected as too far
               appart from input
     """
 
@@ -445,7 +454,7 @@ def process_osm(df, osm_addr_field, accept_language="",
 
     if df.shape[0] == 0:
         return pd.DataFrame(columns=[osm_addr_field, addr_key_field]), \
-                pd.DataFrame(columns=[osm_addr_field, addr_key_field, "reject_reason"])
+                pd.DataFrame(columns=[osm_addr_field, addr_key_field, ("work", "reject_reason")])
 
     if osm_structured:
         to_process = df[[osm_addr_field, addr_key_field, street_field, housenbr_field,
@@ -458,9 +467,9 @@ def process_osm(df, osm_addr_field, accept_language="",
     vlog("Most frequent addresses:")
     vlog(df[osm_addr_field].value_counts().head(5))
 
-    osm_res_field = "osm_res"
+    osm_res_field = ("nominatim", "result")
 
-    to_process["accept_language"] = accept_language
+    to_process[("work", "accept_language")] = accept_language
 
     if osm_structured:
         to_process[osm_res_field] = to_process.apply(lambda row:
@@ -469,9 +478,9 @@ def process_osm(df, osm_addr_field, accept_language="",
                                                                   postcode=   row[postcode_field],
                                                                   city=       row[city_field],
                                                                   country=    row[country_field],
-                                                                  accept_language = row["accept_language"]), axis=1)
+                                                                  accept_language = row[("work", "accept_language")]), axis=1)
     else:
-        to_process[osm_res_field] = to_process[[osm_addr_field, "accept_language"]].apply(lambda row: get_osm(row[osm_addr_field], row["accept_language"]), axis=1)
+        to_process[osm_res_field] = to_process[[osm_addr_field, ("work", "accept_language")]].apply(lambda row: get_osm(row[osm_addr_field], row[("work","accept_language")]), axis=1)
 
     update_timestats("t&p > process > osm", start_time)
 
@@ -483,27 +492,33 @@ def process_osm(df, osm_addr_field, accept_language="",
                                       osm_addr_field=osm_addr_field)
 
     to_process = None # Allows Garbage collector to free memory ...
-
+ 
+    
     osm_results = df[[osm_addr_field, addr_key_field]].merge(osm_results)
 
     vlog(f"     - OSM got {osm_results.shape[0]} results for {osm_results[addr_key_field].nunique()} addresses")
+    vlog(osm_results)
 
     update_timestats("t&p > process > osm_post", start_time)
 
     if osm_results.shape[0] == 0:
 
-        return osm_results, pd.DataFrame(columns=[osm_addr_field, addr_key_field, "reject_reason"])
+        return osm_results, pd.DataFrame(columns=[osm_addr_field, addr_key_field, ("work", "reject_reason")])
 
     if check_results:
 
         start_time = datetime.now()
 
         vlog("     - Keep relevant results")
+        
+        
         osm_results, osm_reject = osm_keep_relevant_results(osm_results, df)
 
 
         if use_osm_parent:
             osm_results, osm_reject = match_parent(osm_results, osm_reject)
+
+            
         vlog(f"     - Got {osm_results.shape[0]} results")
 
 
@@ -513,24 +528,23 @@ def process_osm(df, osm_addr_field, accept_language="",
     else:
         vlog("    - Do not check OSM results, just keep the first result for each request.")
         result_head = osm_results.groupby([addr_key_field]).head(1).copy()
-        result_head["SIM_street_which"] = np.NaN
+        #result_head[("check", "SIM_street_which")] = np.NaN
 
         osm_reject = osm_results[~osm_results.index.isin(result_head.index)].copy()
-        osm_reject["SIM_street"]= np.NaN
-        osm_reject["SIM_zip"]= np.NaN
-        osm_reject["reject_reason"] = "tail"
+        #osm_reject[("check", "SIM_street")]= np.NaN
+        #osm_reject[("check", "SIM_zip")]= np.NaN
+        osm_reject[("work", "reject_reason")] = "tail"
         osm_results = result_head
 
     vlog("     - Done!")
 
 
-    res_columns = [osm_addr_field, addr_key_field, "place_id", "lat", "lon", "display_name", "namedetails", "place_rank", "category", "type", "SIM_street_which", "SIM_street", "SIM_city", "SIM_zip", "SIM_house_nbr"] + list(collapse_params.keys()) + ["addr_out_other"]
-    res_columns = [c for c in res_columns if c in osm_results ]
-    return osm_results[res_columns], osm_reject
+    #res_columns = [osm_addr_field, addr_key_field, "place_id", "lat", "lon", "display_name", "namedetails", "place_rank", "category", "type", "SIM_street_which", "SIM_street", "SIM_city", "SIM_zip", "SIM_house_nbr"] + list(collapse_params.keys()) + ["addr_out_other"]
+    #res_columns = [c for c in res_columns if c in osm_results ]
+    return osm_results, osm_reject
 
 def osm_parse_and_split(df, osm_res_field,
                         osm_addr_field,
-                        prefix="addr_",
                         drop_osm=True):
     """
     Reformat df, with one record per input address, and the whole OSM result
@@ -545,8 +559,6 @@ def osm_parse_and_split(df, osm_res_field,
         Column name of df containing OSM results.
     osm_addr_field : str
         Column name of df containing input address.
-    prefix : str, optional
-        Prefix to add to each output column. The default is "addr_".
     drop_osm : boolean, optional
         Should we drop column with OSM result (non parsed). The default is True.
 
@@ -557,52 +569,75 @@ def osm_parse_and_split(df, osm_res_field,
 
     """
 
-    osm_result_item_field = "osm_item_result"
+    
+    osm_result_item_field = ("nominatim", "osm_item_result")
     start_time = datetime.now()
 
     df = df.set_index([osm_addr_field])
 
     vlog("        * Unstacking...")
-    df_split = df[osm_res_field].apply(pd.Series)
-
+    df_split = df[osm_res_field].apply(pd.Series, dtype=object)
+    
+    
+ 
     if df_split.shape[1] == 0: # None of the addresses were matched by Nominatim
-        return pd.DataFrame(columns = [osm_addr_field])
+        log("No result")
+        osm_results=pd.DataFrame(columns = [osm_addr_field])
+        osm_results.columns = pd.MultiIndex.from_tuples(osm_results.columns, names=["L0", "L1"])
+        osm_results.columns = osm_results.columns.set_names(names=["L0", "L1"])
+        
+        
+        return osm_results
 
     osm_results = pd.DataFrame(df_split.stack()).rename(columns = {0:osm_result_item_field})
+    
+    osm_results.columns = pd.MultiIndex.from_tuples([osm_result_item_field], names=["L0", "L1"])
 
     vlog("        * Extract items")
 
     for item in osm_results.iloc[0][osm_result_item_field].keys() :
-        osm_results[item] = osm_results[osm_result_item_field].apply(lambda x, it=item: x[it] if it in x else None)
+        osm_results[("nominatim", item)] = osm_results[osm_result_item_field].apply(lambda x, it=item: x[it] if it in x else None)
 
     addr_items = []
 
     for row in osm_results[osm_result_item_field].apply(lambda x: x["address"]):
         for addr_item in row.keys():
             addr_items.append(addr_item)
+   
+    addr_items = list(set(addr_items))
 
-    addr_items = pd.Series(addr_items).value_counts().keys().values
-
+    
     for addr_item in addr_items:
-        osm_results[prefix+addr_item] = osm_results[osm_result_item_field].apply(lambda x, ad_it=addr_item: x["address"][ad_it] if ad_it in x["address"] else None)
+        osm_results[("nominatim", addr_item)] = osm_results[osm_result_item_field].apply(lambda x, ad_it=addr_item: x["address"][ad_it] if ad_it in x["address"] else None)
 
+    # log(osm_results)
+    
     # Keep only "namedetails" if category == "highway"
-    osm_results["namedetails"] = np.where(osm_results["category"] == "highway", osm_results["namedetails"].apply(lambda dct: " - ".join(dct.values())), "")
+    osm_results[("nominatim", "namedetails")] = np.where(osm_results[("nominatim", "category")] == "highway", osm_results[("nominatim", "namedetails")].apply(lambda dct: " - ".join(dct.values())), "")
 
-    osm_results = osm_results.drop(columns=["address"] + ([osm_result_item_field] if drop_osm else []))
+    osm_results = osm_results.drop(columns=[("nominatim", "address")] + ([osm_result_item_field] if drop_osm else []))
 
-    osm_results.place_rank=osm_results.place_rank.astype(int)
+    osm_results[("nominatim", "place_rank")]=osm_results[("nominatim", "place_rank")].astype(int)
 
-    osm_results = add_addr_out_columns(osm_results, prefix)
+    
+    for fld in ["country_code","region"]:
+        if fld in addr_items:
+            addr_items.remove(fld)
+            
+    
+    osm_results = add_addr_out_columns(osm_results,addr_items)
 
-    osm_results = osm_results.reset_index().rename(columns={"level_1": "osm_order"})
-
+    osm_results = osm_results.reset_index()
+    osm_results[("work", "osm_order")] = osm_results["level_1"]
+    
+    osm_results = osm_results.drop("level_1", level=0, axis=1)
+    
     update_timestats("t&p > process > osm_post > parse&split", start_time)
 
     return osm_results
 
 
-def collapse(df, columns, prefix=None, method="fillna"):
+def collapse(df, columns, method="fillna"):
     """
     Collapse all columns in "columns" into a single Series.
     If method = fillna, keep the first non null value (row by row)
@@ -614,8 +649,6 @@ def collapse(df, columns, prefix=None, method="fillna"):
         Any dataframe.
     columns : list of str (column names)
         List of columns to compact into a single out.
-    prefix : str, optional
-        If given, will prefix all columns in "columns" by this value beforehand. The default is None.
     method : str, optional
         "set" (keep all values) or "fillna" (keep only the first one).
         The default is "fillna".
@@ -631,12 +664,9 @@ def collapse(df, columns, prefix=None, method="fillna"):
     assert method in ["fillna", "set"], "method argument should be either 'fillna' or 'set'"
 
 
-    if prefix:
-        columns = [prefix+col for col in columns]
-
     if method=="fillna":
 
-        res = pd.Series(index = df.index)#[columns[0]]
+        res = pd.Series(index = df.index, dtype=str)#[columns[0]]
 
         for col in columns:
             if col in df.keys():
@@ -647,11 +677,11 @@ def collapse(df, columns, prefix=None, method="fillna"):
     return res
 
 
-def add_addr_out_columns(osm_results, prefix):
+def add_addr_out_columns(osm_results, addr_items):
     """
     Add address component columns, by collapsing columns, following "collapse_params",
     using "collapse" with "fillna" method
-    All other columns are gathered in "addr_out_other", using "collapse" wit "set" method
+    All other columns are gathered in "addr_out_other", using "collapse" with "set" method
 
     Parameters
     ----------
@@ -666,19 +696,27 @@ def add_addr_out_columns(osm_results, prefix):
         input with a set of additional columns.
 
     """
-    other_columns = osm_results.keys()
+    #other_columns = #osm_results.keys()
+
+    #for out_column, in_columns in collapse_params.items():
+    #     other_columns = [col for col in other_columns if col[1] not in in_columns]
+            
+    #other_columns.remove('addr_country_code')
+
+    # if "addr_state" in other_columns:
+    #     other_columns.remove('addr_state')
 
     for out_column, in_columns in collapse_params.items():
-        other_columns = [col for col in other_columns if col.replace(prefix, "") not in in_columns and col.startswith(prefix)]
-    other_columns.remove('addr_country_code')
+        osm_results[out_column] = collapse(osm_results, [("nominatim", col) for col in in_columns], "fillna")
 
-    if "addr_state" in other_columns:
-        other_columns.remove('addr_state')
-
+        
+    osm_results[("output","other")] = osm_results["nominatim"][addr_items].apply(set,axis=1)
+    
+    
     for out_column, in_columns in collapse_params.items():
-        osm_results[out_column] = collapse(osm_results, in_columns, "addr_", "fillna")
-
-    osm_results["addr_out_other"] = collapse(osm_results, other_columns, "", "set") if len(other_columns)>0 else np.NaN
+        osm_results[("output","other")] = osm_results.apply(lambda rec: rec[("output","other")] -{rec[out_column]},axis=1)
+    
+    osm_results[("output","other")] = osm_results[("output","other")].apply(lambda lst: [x for x in lst if not pd.isnull(x)]).apply(" - ".join)
 
     return osm_results
 
@@ -755,11 +793,15 @@ def apply_transformers(addresses, transformers, check_results):
 
     # Return only records that have been modified by transfomer sequence
 
-    changed = pd.Series(index=transformed_addresses.index)
+    changed = pd.Series(index=transformed_addresses.index, dtype=str)
     changed[:] = False
 
     fields = [street_field, housenbr_field, city_field, postcode_field, country_field]
-
+    
+        
+    if transformed_addresses.shape[0]==0:
+        transformed_addresses.columns = pd.MultiIndex.from_tuples(transformed_addresses.columns, names=["L0", "L1"])
+        
     init_addresses = transformed_addresses[[addr_key_field]].merge(init_addresses).set_index(transformed_addresses.index)
 
 
@@ -771,11 +813,11 @@ def apply_transformers(addresses, transformers, check_results):
 
 # ## Photon
 
-photon_street_field   = "photon_street"
-photon_name_field     = "photon_name" # Sometimes, streetname is put in "name" field (especially for request without house number)
-photon_postcode_field = "photon_postcode"
-photon_city_field     = "photon_city"
-photon_country_field  = "photon_country"
+photon_street_field   = ("photon","street")
+photon_name_field     = ("photon","name") # Sometimes, streetname is put in "name" field (especially for request without house number)
+photon_postcode_field = ("photon","postcode")
+photon_city_field     = ("photon","city")
+photon_country_field  = ("photon","country")
 
 
 def photon_keep_relevant_results(photon_results, addresses):
@@ -814,7 +856,7 @@ def photon_keep_relevant_results(photon_results, addresses):
                                   housenbr_field_b = "fake_house_number",
                                   postcode_field_b =   postcode_field,
                                   city_field_b =  city_field,
-                                  secondary_sort_field = "photon_order")
+                                  secondary_sort_field = ("photon", "photon_order"))
     return keep
 
 
@@ -837,19 +879,22 @@ def photon_parse_and_split(res, addr_field, photon_col):
         Parsed version of input.
 
     """
-    res["photon_parsed"] = res[photon_col].apply(lambda j:j["features"] if "features" in j else None)
+    res[("photon","parsed")] = res[photon_col].apply(lambda j:j["features"] if "features" in j else None)
 
     res = res.set_index([addr_field])
 
-    ser = res.photon_parsed.apply(pd.Series)
+    ser = res[("photon","parsed")].apply(pd.Series, dtype=str)
 
     if ser.shape[0] == 0 or ser.shape[1] == 0:
         return pd.DataFrame(columns = [addr_field])
 
-    photon_results = pd.DataFrame(ser.stack()).rename(columns = {0:photon_col})
+    photon_results = pd.DataFrame(ser.stack())#.rename(columns = {0:photon_col})
+    photon_results.columns = pd.MultiIndex.from_tuples([photon_col], names=["L0", "L1"])
 
-    for item in photon_results[photon_col].apply(lambda x: x.keys())[0]:
-        photon_results[item] = photon_results[photon_col].apply(lambda x, it=item: x[it] if it in x else None)
+    photon_results = photon_results.reset_index(level=0)
+    
+    # for item in photon_results[photon_col].apply(lambda x: x.keys())[0]:
+    #     photon_results[("photon", item)] = photon_results[photon_col].apply(lambda x, it=item: x[it] if it in x else None)
 
     addr_items = []
 
@@ -859,10 +904,10 @@ def photon_parse_and_split(res, addr_field, photon_col):
 
     addr_items = pd.Series(addr_items).value_counts().iloc[0:30].keys().values
 
-    prefix="photon_"
+    #prefix="photon_"
     for addr_item in addr_items:
-        photon_results[prefix+addr_item] = photon_results[photon_col].apply(lambda x, ad_it=addr_item: x["properties"][ad_it] if ad_it in x["properties"] else None)
-
+        photon_results[("photon", addr_item)] = photon_results[photon_col].apply(lambda x, ad_it=addr_item: x["properties"][ad_it] if ad_it in x["properties"] else None)
+    
     for fld in [photon_street_field, photon_postcode_field, photon_city_field, photon_country_field]:
         if fld not in photon_results:
             vlog(f"Photon: adding field {fld}")
@@ -871,10 +916,8 @@ def photon_parse_and_split(res, addr_field, photon_col):
     if photon_name_field in photon_results:
         photon_results[photon_street_field] = photon_results[photon_street_field].replace("", pd.NA).fillna(photon_results[photon_name_field])
 
-    photon_results["lat"] = photon_results["geometry"].apply(lambda x: x["coordinates"][0])
-    photon_results["lon"] = photon_results["geometry"].apply(lambda x: x["coordinates"][1])
-
-    photon_results = photon_results.drop([photon_col, "geometry", "photon_extent", "type","properties", "photon_osm_id"], axis=1, errors="ignore").reset_index().rename(columns={"level_1": "photon_order"})#res #parse_and_split(res, osm_field, key=addr_field)
+    photon_results[('photon', 'photon_order')] = photon_results.index #reset_index().rename(columns={"index": "photon_order"})#res #parse_and_split(res, osm_field, key=addr_field)
+    
     return photon_results
 
 def process_photon(df, addr_field):
@@ -895,20 +938,26 @@ def process_photon(df, addr_field):
 
     """
 
-    photon_col = "photon"
+    photon_col = ("photon", "out")
 
     to_process = df[[addr_field]].drop_duplicates()
 
     vlog(f"Photon: Will process {df.shape[0]} with {to_process.shape[0]} unique values")
 
     to_process[photon_col] = to_process[addr_field].apply(get_photon)
-
+    
     photon_results = photon_parse_and_split(to_process, addr_field, photon_col)
 
     vlog(f"Photon got {photon_results.shape[0]} results for {df.shape[0]} addresses")
-    vlog(photon_results)
-
-    photon_results = df[[addr_key_field, addr_field]].merge(photon_results)
+    
+    if photon_results.shape[0]>0:
+        photon_results = df[[addr_key_field, addr_field]].merge(photon_results)
+    else:
+        photon_results = df[[addr_key_field, addr_field]].copy()
+        photon_results[photon_street_field]=pd.NA
+        photon_results[photon_postcode_field]=pd.NA
+        photon_results[photon_city_field]=pd.NA
+        photon_results[("photon", "photon_order")]=pd.NA
 
     return photon_results
 
@@ -934,10 +983,10 @@ def photon_transformer(addresses, check_results):
     photon_addr = addresses[[addr_key_field, street_field, housenbr_field,
                              postcode_field, city_field, country_field]].copy()
 
-    photon_addr["photon_full_addr"] = photon_addr[street_field].fillna("") +", "+ photon_addr[postcode_field].fillna("") + " " +photon_addr[city_field].fillna("")+", "+                                 photon_addr[country_field].fillna("")
+    photon_addr[("photon", "full_addr_in")] = photon_addr[street_field].fillna("") +", "+ photon_addr[postcode_field].fillna("") + " " +photon_addr[city_field].fillna("")+", "+                                 photon_addr[country_field].fillna("")
 
     # Send to Photon
-    photon_res = process_photon(photon_addr, "photon_full_addr")
+    photon_res = process_photon(photon_addr, ("photon", "full_addr_in"))
 
     if check_results : #and photon_check_results:
 
@@ -960,17 +1009,20 @@ def photon_transformer(addresses, check_results):
     fields_photon = [field_photon  for field_in, field_photon in fields]
 
     update_timestats("'t&p > transformer > photon", start_time)
-
-    return photon_res_sel[[addr_key_field] + fields_photon].rename(columns= {field_photon: field_in for field_in, field_photon in fields})[[addr_key_field] + fields_out]
+    res= photon_res_sel[[addr_key_field] + fields_photon].rename(columns= {field_photon[1]: field_in[1] for field_in, field_photon in fields}).rename(columns= {"photon":"input"})[[addr_key_field] + fields_out]
+    
+    vlog("Photon transformed:")
+    vlog(res)
+    return res
 
 
 # ## Libpostal
 
-lpost_street_field   = "lpost_road"
-lpost_housenbr_field = "lpost_house_number"
-lpost_postcode_field = "lpost_postcode"
-lpost_city_field     = "lpost_city"
-lpost_country_field  = "lpost_country"
+lpost_street_field   = ("lpost","road")
+lpost_housenbr_field = ("lpost","house_number")
+lpost_postcode_field = ("lpost","postcode")
+lpost_city_field     = ("lpost","city")
+lpost_country_field  = ("lpost","country")
 
 def libpostal_transformer(addresses,
                           check_results):
@@ -994,15 +1046,15 @@ def libpostal_transformer(addresses,
     libpost_addr = addresses[[addr_key_field, street_field, housenbr_field, postcode_field, city_field, country_field]].copy()
 
     # Make full address for libpostal
-    libpost_addr["lpost_full_addr_in"] = libpost_addr[street_field] + ", "+ libpost_addr[housenbr_field].fillna("")+", "+                    libpost_addr[postcode_field].fillna("") + " " +libpost_addr[city_field].fillna("") +",  " +                    libpost_addr[country_field].fillna("")
+    libpost_addr[("lpost", "full_addr_in")] = libpost_addr[street_field] + ", "+ libpost_addr[housenbr_field].fillna("")+", "+                    libpost_addr[postcode_field].fillna("") + " " +libpost_addr[city_field].fillna("") +",  " +                    libpost_addr[country_field].fillna("")
 
     # Apply libpostal
-    libpost_addr["lpost"] = libpost_addr.lpost_full_addr_in.apply(parse_address)
-    libpost_addr["lpost"] = libpost_addr.lpost.apply(lambda lst: {x: y for (y, x) in lst})
+    libpost_addr[("lpost","out")] = libpost_addr[("lpost","full_addr_in")].apply(parse_address)
+    libpost_addr[("lpost", "out")] = libpost_addr[("lpost", "out")].apply(lambda lst: {x: y for (y, x) in lst})
 
     # Split libpostal results
-    for field in "road", "house_number", "postcode", "city", "house", "country":
-        libpost_addr["lpost_"+field] =libpost_addr.lpost.apply(lambda rec, fld=field: rec[fld] if fld in rec else np.NAN)
+    for field in [lpost_street_field, lpost_housenbr_field, lpost_postcode_field, lpost_city_field, lpost_country_field]:
+        libpost_addr[field] =libpost_addr[("lpost", "out")].apply(lambda rec, fld=field[1]: rec[fld] if fld in rec else np.NAN)
 
     if check_results:
         # Keep only "close" results
@@ -1020,7 +1072,7 @@ def libpostal_transformer(addresses,
         vlog(reject)
     if libpost_addr.shape[0] == 0:
 
-        return pd.DataFrame(columns=["osm_addr_in", addr_key_field])#,  libpost_addr
+        return pd.DataFrame(columns=[transformed_address_field, addr_key_field])#,  libpost_addr
 
 
     fields =        [(street_field, lpost_street_field), (housenbr_field, lpost_housenbr_field),
@@ -1030,8 +1082,8 @@ def libpostal_transformer(addresses,
     fields_lpost  = [field_lpost   for field_in, field_lpost in fields]
 
     update_timestats("'t&p > transformer > libpostal", start_time)
-
-    return libpost_addr[[addr_key_field] + fields_lpost].rename(columns= {field_lpost: field_in for field_in, field_lpost in fields})[[addr_key_field] + fields_out]
+        
+    return libpost_addr[[addr_key_field] + fields_lpost].rename(columns= {field_lpost[1]: field_in[1] for field_in, field_lpost in fields}).rename(columns= {"lpost":"input"})[[addr_key_field] + fields_out]
 
 # ## Regex transformer
 
@@ -1059,7 +1111,7 @@ def regex_transformer(addresses, regex_key="init"):
 
     for (field, match, repl) in regex_replacements[regex_key]:
         vlog(f"{field}: {match}")
-        new_values = regex_addr[field].fillna("").str.replace(match, repl)
+        new_values = regex_addr[field].fillna("").str.replace(match, repl,regex=True)
         new_values_sel = regex_addr[field].fillna("") != new_values
 
         if new_values_sel.sum()>0:
@@ -1091,9 +1143,9 @@ def get_init_df(data):
         Single-record dataframe ready for "batch" processing.
 
     """
-    log("init_df:")
-    log(data)
-    return pd.DataFrame([{addr_key_field : "1",
+    vlog("init_df:")
+    
+    df= pd.DataFrame([{addr_key_field : "1",
                           street_field:   data[street_field],
                           housenbr_field: data[housenbr_field],
                           postcode_field: data[postcode_field],
@@ -1101,56 +1153,59 @@ def get_init_df(data):
                           country_field:  data[country_field]
                           }])
 
+    df.columns = pd.MultiIndex.from_tuples(df.columns, names=["L0", "L1"])
+    vlog(df)
+    return df
 
 
-def get_row_dict(row):
-    """
+# def get_row_dict(row):
+#     """
 
-    Convert a dataframe row in a dictionary (for a selection of columns)
+#     Convert a dataframe row in a dictionary (for a selection of columns)
 
-    Parameters
-    ----------
-    row : pd.Series
-        Dataframe row.
+#     Parameters
+#     ----------
+#     row : pd.Series
+#         Dataframe row.
 
-    Returns
-    -------
-    dict
-        .
+#     Returns
+#     -------
+#     dict
+#         .
 
-    """
+#     """
 
-    to_copy_field = ["osm_id", "place_id", "lat","lon","display_name",
-                     "place_rank", "method",
-                     "extra_house_nbr", "in_house_nbr", "lpost_house_nbr", "lpost_unit",
-                     "reject_reason", "osm_addr_in"] + \
-            list(collapse_params.keys())  + \
-            list(filter(lambda x: x.startswith("SIM"), row.index))
-    res =  {}
+#     to_copy_field = ["osm_id", "place_id", "lat","lon","display_name",
+#                      "place_rank", "method",
+#                      "extra_house_nbr", "in_house_nbr", "lpost_house_nbr", "lpost_unit",
+#                      "reject_reason", "osm_addr_in"] + \
+#             list(collapse_params.keys())  + \
+#             list(filter(lambda x: x.startswith("SIM"), row.index))
+#     res =  {}
 
-    for fld in to_copy_field:
-        if fld in row:
-            res[fld] = row[fld]
+#     for fld in to_copy_field:
+#         if fld in row:
+#             res[fld] = row[fld]
 
-    return res
+#     return res
 
 
-def format_res(res):
-    """
-    Convert a dataframe in a list of dictionaries
+# def format_res(res):
+#     """
+#     Convert a dataframe in a list of dictionaries
 
-    Parameters
-    ----------
-    res : pd.DataFrame
-        Dataframe to convert.
+#     Parameters
+#     ----------
+#     res : pd.DataFrame
+#         Dataframe to convert.
 
-    Returns
-    -------
-    list of dict
-        .
+#     Returns
+#     -------
+#     list of dict
+#         .
 
-    """
-    return list(res.fillna("").apply(get_row_dict, axis=1))
+#     """
+#     return list(res.fillna("").apply(get_row_dict, axis=1))
 
 
 
@@ -1169,17 +1224,24 @@ def format_osm_addr(osm_rec):
         Compacted/formatted version of OSM output.
 
     """
-    res = {"method":"fast"}
+    res = {"work": {"method":"fast"},
+          "nominatim": {}}
+    
+    
 
     for fld in ["display_name", "place_id", "lat","lon", "place_rank"]:
         if fld in osm_rec:
-            res[fld] = osm_rec[fld]
+            res["nominatim"][fld] = osm_rec[fld]
+    for fld in osm_rec["address"]:
+        res["nominatim"][fld] = osm_rec["address"][fld]
 
+            
     for out_field, in_fields in collapse_params.items():
-        res[out_field] = ""
+        if out_field[0] not in res:
+            res[out_field[0]] = {}
         for in_field in in_fields:
             if in_field in osm_rec["address"]:
-                res[out_field] = osm_rec["address"][in_field]
+                res[out_field[0]][out_field[1]] = osm_rec["address"][in_field]
                 break
     return res
 
@@ -1202,10 +1264,12 @@ def add_lpost_house_number(addr_in, match, data):
     None.
 
     """
+    
+            
     lpost = get_lpost_house_number(addr_in)
-    match["in_house_nbr"] = data["housenumber"] if "housenumber" in data else ""
-    match["lpost_house_nbr"] = lpost[0]
-    match["lpost_unit"] = lpost[1]
+    match["output"]["in_house_nbr"] = data["housenumber"] if "housenumber" in data else ""
+    match["output"]["lpost_house_nbr"] = lpost[0]
+    match["output"]["lpost_unit"] = lpost[1]
 
 
 def process_address_fast(data, osm_structured=False,
@@ -1259,8 +1323,7 @@ def process_address_fast(data, osm_structured=False,
 
     if len(osm_res) >0:
         match = format_osm_addr(osm_res[0])
-
-        if retry_with_low_rank and match["place_rank"] < 30: # Try to clean housenumber to see if we can improved placerank
+        if retry_with_low_rank and match["nominatim"]["place_rank"] < 30: # Try to clean housenumber to see if we can improved placerank
             vlog("Trying retry_with_low_rank")
             start_timet2 = datetime.now()
             cleansed_housenbr = re.match("^([0-9]+)", data[housenbr_field])
@@ -1269,19 +1332,19 @@ def process_address_fast(data, osm_structured=False,
                 cleansed_housenbr = cleansed_housenbr[0]
 
             #vlog(f"cleansed_housenbr: {cleansed_housenbr}")
-            if cleansed_housenbr != data[housenbr_field]:
+            if cleansed_housenbr and cleansed_housenbr != data[housenbr_field]:
 
                 data_cleansed= data.copy()
                 data_cleansed[housenbr_field] = cleansed_housenbr
                 osm_res_retry = process_address_fast(data_cleansed,
                                                      osm_structured=osm_structured,
-                                                     with_extra_house_number=False,
+                                                     with_extra_house_number = False,
                                                      retry_with_low_rank = False)
 
                 if osm_res_retry and 'error' in osm_res_retry:
                     return osm_res_retry
 
-                if osm_res_retry and osm_res_retry["match"][0]["place_rank"] == 30: # if place_rank is not improved, we keep the original result
+                if osm_res_retry and osm_res_retry["match"][0]["nominatim"]["place_rank"] == 30: # if place_rank is not improved, we keep the original result
                     osm_res_retry["match"][0]["cleansed_house_nbr"] = cleansed_housenbr
                     if with_extra_house_number:
                         add_lpost_house_number(addr_in, osm_res_retry["match"][0], data)
@@ -1293,16 +1356,16 @@ def process_address_fast(data, osm_structured=False,
             add_lpost_house_number(addr_in, match, data)
 
         start_time2 = datetime.now()
-        match["osm_addr_in"] = addr_in
+        match[transformed_address_field[0]][transformed_address_field[1]] = addr_in
         res = {"match":  [match],
-               "reject": []}
+               "rejected": []}
 
         for osm_rec in osm_res[1:]:
             rec = format_osm_addr(osm_rec)
-            rec["reject_reason"]= "tail"
-            rec["dist_to_match"] = round(distance( (rec["lat"], rec["lon"]), (match["lat"], match["lon"])).km, 3)
+            rec["work"]["reject_reason"]= "tail"
+            rec["work"]["dist_to_match"] = round(distance( (rec["nominatim"]["lat"], rec["nominatim"]["lon"]), (match["nominatim"]["lat"], match["nominatim"]["lon"])).km, 3)
 
-            res["reject"].append(rec)
+            res["rejected"].append(rec)
 
         update_timestats("fast > format", start_time2)
         update_timestats("fast", start_time)
@@ -1376,21 +1439,29 @@ def process_address(data, check_results=True,
             vlog(traceback.format_exc())
             return {"error": str(exc)}
 
-        all_reject = all_reject.append(rejected, sort=False)
+        all_reject = pd.concat([all_reject, rejected], sort=False)
+        all_reject.columns = pd.MultiIndex.from_tuples(all_reject.columns, names=["L0", "L1"])
 
         vlog(step_stats)
         if osm_results.shape[0] > 0:
+            
+            osm_results = osm_results.drop([street_field, housenbr_field, postcode_field, city_field, country_field], 
+                                           errors='ignore',
+                                           axis=1).merge(to_process_addresses, how="left")
+            
             if with_extra_house_number :
-                osm_results = add_extra_house_number(osm_results, to_process_addresses)
+                osm_results = add_extra_house_number(osm_results)
 
             start_time = datetime.now()
-            form_res =  format_res(osm_results)
-            form_rej = format_res(all_reject)
-            update_timestats("format_res", start_time)
+            form_res =  multiindex_to_dict(osm_results)
+            
+            
+            form_rej = multiindex_to_dict(all_reject)
+            #update_timestats("format_res", start_time)
 
-            return {"match": form_res, "reject": form_rej }
+            return {"match": form_res, "rejected": form_rej }
 
-    return {"reject": format_res(all_reject)}
+    return {"rejected": multiindex_to_dict(all_reject)}
 
 
 def process_addresses(to_process_addresses, check_results=True,
@@ -1440,14 +1511,22 @@ def process_addresses(to_process_addresses, check_results=True,
             osm_results, rejected, step_stats = transform_and_process(chunk, transformers,
                                                                       check_results=check_results,
                                                                       osm_structured=osm_structured)
+            
+            osm_addresses =      pd.concat([osm_addresses, osm_results], sort=False).drop_duplicates()
+            osm_addresses.columns=            osm_addresses.columns.set_names(["L0","L1"])
+            
+            vlog("osm addresses: ")
+            vlog(osm_addresses)
+            
+            if rejected.shape[0]>0:
+                rejected_addresses = pd.concat([rejected_addresses, rejected], sort=False).drop_duplicates()
+                rejected_addresses.columns=     rejected_addresses.columns.set_names(["L0","L1"])
 
-            osm_addresses =      osm_addresses.append(osm_results, sort=False).drop_duplicates()
-            rejected_addresses = rejected_addresses.append(rejected, sort=False).drop_duplicates()
 
         except Exception as exc:
-            osm_results = chunk[[addr_key_field]]
-            osm_results["method"] = "error on " + ";".join(transformers)
-            osm_addresses =      osm_addresses.append(osm_results, sort=False).drop_duplicates()
+            osm_results = chunk[[addr_key_field]].copy()
+            osm_results[("work", "method")] = "error on " + ";".join(transformers)
+            osm_addresses =  pd.concat([osm_addresses, osm_results], sort=False).drop_duplicates()
 
             log(f"Error during processing: {exc}")
             vlog(traceback.format_exc())
@@ -1455,11 +1534,16 @@ def process_addresses(to_process_addresses, check_results=True,
         chunk  = chunk[~chunk[addr_key_field].isin(osm_results[addr_key_field])].copy()
         if chunk.shape[0]==0:
             break
-
-
+        
         vlog(step_stats)
+        
+    # At this point, ('input', 'streetName'),... contain transformed address. We put back original address
+    
+    osm_addresses = osm_addresses.drop([street_field, housenbr_field, postcode_field, city_field, country_field], axis=1).merge(to_process_addresses, how="left")
+
+        
     if with_extra_house_number and osm_addresses.shape[0] > 0:
-        osm_addresses = add_extra_house_number(osm_addresses, to_process_addresses)
+        osm_addresses = add_extra_house_number(osm_addresses)
 
     return osm_addresses, rejected_addresses #{"match": format_res(osm_results), "rejected": format_res(all_reject)}
 
@@ -1487,34 +1571,16 @@ def remove_empty_values(dct_lst):
     return [{k: v for k, v in item.items() if not pd.isnull(v) and v != ""} for item in dct_lst]
 
 
-def convert_street_components(osm_record):
-    """
-    Convert a record containing fields like "addr_out_street", "addr_out_number"
-    to a dict containing a field "address":{"streetName":..., "houseNumber": ...}
 
-    Parameters
-    ----------
-    osm_record : dict
-        input OSM record
 
-    Returns
-    -------
-    osm_record : dict
-        Idem as input, with an additional field "address", and without "addr_out_*" fields
 
-    """
-
-    address_out = {
-        "streetName"  : osm_record["addr_out_street"]  if "addr_out_street"    in osm_record else None,
-        "houseNumber" : osm_record["addr_out_number"]  if "addr_out_number"    in osm_record else None,
-        "postCode"    : osm_record["addr_out_postcode"]if "addr_out_postcode"  in osm_record else None,
-        "city"        : osm_record["addr_out_city"]    if "addr_out_city"      in osm_record else None,
-        "country"     : osm_record["addr_out_country"] if "addr_out_country"   in osm_record else None,
-        "other"       : osm_record["addr_out_other"]   if "addr_out_other"     in osm_record else None
-    }
-    osm_record["address"] = {k:v for k,v in address_out.items() if v is not None}
-
-    addr_out_keys = list(filter(lambda k: "addr_out" in k, osm_record.keys()))
-    for fld in addr_out_keys:
-        del  osm_record[fld]
-    return osm_record
+def multiindex_to_dict(df):
+    l0_names = df.columns.get_level_values(0).unique()
+        
+    res =  [{ k1: {k2: rec[(k1, k2)] for k2 in df[k1].columns.get_level_values(0)} for k1 in l0_names }  for rec in df.to_dict(orient="records")]
+    
+    
+    return [{k1: {k2: rec[k1][k2] for k2 in rec[k1] if isinstance(rec[k1][k2], list) or (pd.notnull(rec[k1][k2]) and rec[k1][k2] != "")} for k1 in rec} for rec in res]
+             
+             
+             
