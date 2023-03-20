@@ -14,7 +14,7 @@ Functions used in AddressCleanserREST
 
 import sys
 
-from datetime import datetime, timedelta
+from datetime import datetime
 import traceback
 
 import re
@@ -40,15 +40,15 @@ from config import (addr_key_field,
                     city_field,
                     country_field,
                     transformed_address_field,
-                    regex_replacements,
                     collapse_params)
 
-from base import (log, vlog, get_osm, get_osm_struct, get_photon)
+from base import (log, vlog, get_osm, get_osm_struct, update_timestats)
 
 from check_result_utils import (match_parent,
-                                ignore_mismatch_keep_bests,
                                 osm_keep_relevant_results
                                 )
+
+from transformers import (photon_transformer, libpostal_transformer, regex_transformer)
 
 
 logging.basicConfig(format='[%(asctime)s]  %(message)s', stream=sys.stdout)
@@ -68,33 +68,10 @@ else:
 
 
 
-timestats = {}
 
-
-# # Functions
-
-# ## Global
-
-
-def update_timestats(label, start_time):
-    """
-    Add delay since 'start_time' (datetime.now()-start_time) to timestats[label]
-
-    Parameters
-    ----------
-    label : str
-        DESCRIPTION.
-    t : timestamp
-        when activity to measure started.
-
-    Returns
-    -------
-    None.
-
-    """
-    if not label in timestats:
-        timestats[label] = timedelta(0)
-    timestats[label] += datetime.now() - start_time
+###############################
+## Data conversion
+###############################
 
 def to_camel_case(data):
     """
@@ -124,6 +101,126 @@ def to_camel_case(data):
     if isinstance(data, list):
         return [ to_camel_case(item)  for item in data]
     return data
+
+
+
+def clean_addr_in(addr_in):
+    """
+    Clean string containing an adresse, by removing useless commas. Examples:
+        - "Avenue Fonsny, , , , " becomes "Avenue Fonsny"
+        - "Avenue Fonsny, , 1060, , " becomes "Avenue Fonsny, 1060"
+
+    Parameters
+    ----------
+    addr_in : str
+        Address to clean.
+
+    Returns
+    -------
+    addr_in : str
+        Cleansed address (without duplicated commas).
+
+    """
+    old_addr_in=""
+    while addr_in!= old_addr_in:
+        old_addr_in = addr_in
+        addr_in = re.sub(",[ ]*,", ",", addr_in).strip()
+        addr_in = re.sub(",$", "", addr_in)
+        addr_in = re.sub("^,", "", addr_in)
+
+    return addr_in
+
+def collapse(df, columns, method="fillna"):
+    """
+    Collapse all columns in "columns" into a single Series.
+    If method = fillna, keep the first non null value (row by row)
+    If method = set, keep all of them, without duplicates, separated by " - "
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Any dataframe.
+    columns : list of str (column names)
+        List of columns to compact into a single out.
+    method : str, optional
+        "set" (keep all values) or "fillna" (keep only the first one).
+        The default is "fillna".
+
+
+    Returns
+    -------
+    res : pd.Series
+        Collapsed column.
+
+    """
+
+    assert method in ["fillna", "set"], "method argument should be either 'fillna' or 'set'"
+
+
+    if method=="fillna":
+
+        res = pd.Series(index = df.index, dtype=str)#[columns[0]]
+
+        for col in columns:
+            if col in df.keys():
+                res = res.fillna(df[col])
+    elif method== "set":
+        res = df[columns].apply(lambda lst: {x for x in lst if not pd.isnull(x)}, axis=1).apply(" - ".join)
+
+    return res
+
+
+
+def multiindex_to_dict(df):
+    """
+    Convert a Pandas Dataframe with two-levels multi-index columns into
+    a list of dictionaries
+
+    Example of input:
+    L0    | col_1   | col_1   | col_2    |
+    L1    | col_1_1 | col_1_2 | col_2_1  |
+    --------------------------------------
+    0     | A       | B       | C        |
+    1     | D       | E       | F        |
+    --------------------------------------
+
+    corresponding output:
+        [ {'col_1' : {
+                'col_1_1':'A',
+                'col_1_2':'B'},
+            'col_2' : {
+                'col_2_1': 'C'
+                }},
+        {'col_1' : {
+                'col_1_1':'D',
+                'col_1_2':'E'},
+            'col_2' : {
+                'col_2_1': 'F'
+                }}
+            ]
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        a Pandas Dataframe with two-levels multi-index columns.
+
+    Returns
+    -------
+    list of dict
+
+
+    """
+    l0_names = df.columns.get_level_values(0).unique()
+
+    res =  [{ k1: {k2: rec[(k1, k2)] for k2 in df[k1].columns.get_level_values(0)} for k1 in l0_names }  for rec in df.to_dict(orient="records")]
+
+
+    return [{k1: {k2: rec[k1][k2] for k2 in rec[k1] if isinstance(rec[k1][k2], list) or (pd.notnull(rec[k1][k2]) and rec[k1][k2] != "")} for k1 in rec} for rec in res]
+
+
+###############################
+## OSM functions
+###############################
 
 def retry_with_low_place_rank(osm_results, sent_addresses,
                               check_results=True, osm_structured=False):
@@ -201,211 +298,6 @@ def retry_with_low_place_rank(osm_results, sent_addresses,
     return osm_results
 
 
-def get_lpost_house_number(street):
-    """
-    Use libpostal to extract house_number and box number from street.
-
-    Parameters
-    ----------
-    street : str
-        street name.
-
-    Returns
-    -------
-    [house number, box number].
-
-    """
-
-    try:
-        lpost = parse_address(street)
-
-
-        housenbr = ";".join([y for (y, x) in lpost if x=="house_number"])
-        boxnbr = ";".join([y for (y, x) in lpost if x=="unit"])
-    except Exception as exc:
-        log(f"Error during processing of 'get_lpost_house_number': {exc}")
-        housenbr = 'error during Libpostal processing'
-        boxnbr   = 'error during Libpostal processing'
-
-    return [housenbr, boxnbr]
-
-
-def add_extra_house_number(osm_addresses):
-    """
-    For all addresses in input fields of "osm_addresses", call libpostal to extract housenumbers
-
-    Parameters
-    ----------
-    osm_addresses : pd.DataFrame
-        Output of process_osm.
-
-    Returns
-    -------
-    pd.DataFrame equivalent from osm_addresses, with 3 additional columns:
-        in_house_nbr: housenumber in input data
-        lpost_house_nbr: housenumber from Libpostal
-        lpost_unit: box number from Libpostal
-
-
-    """
-    vlog("Start adding extra house number")
-
-    start_time = datetime.now()
-
-    #log(osm_addresses)
-#    if housenbr_field not in osm_addresses:
-#        log(f"Do not find {housenbr_field} in osm_addresses")
-#        log(osm_addresses)
-#        return osm_addresses
-
-    result = osm_addresses
-
-
-
-    result[("output", "in_house_nbr")] = result[housenbr_field]
-
-    lp = result.fillna("").apply(lambda row: get_lpost_house_number(f"{row[street_field]} {row[housenbr_field]}, {row[postcode_field]} {row[city_field]}".strip()), axis=1,  result_type ='expand')
-
-    result[[("output","lpost_house_nbr"), ("output","lpost_unit")]] = lp
-
-
-    vlog("End of adding extra house number")
-    update_timestats("extra_hn", start_time)
-
-    return result
-
-
-def clean_addr_in(addr_in):
-    """
-    Clean string containing an adresse, by removing useless commas. Examples:
-        - "Avenue Fonsny, , , , " becomes "Avenue Fonsny"
-        - "Avenue Fonsny, , 1060, , " becomes "Avenue Fonsny, 1060"
-
-    Parameters
-    ----------
-    addr_in : str
-        Address to clean.
-
-    Returns
-    -------
-    addr_in : str
-        Cleansed address (without duplicated commas).
-
-    """
-    old_addr_in=""
-    while addr_in!= old_addr_in:
-        old_addr_in = addr_in
-        addr_in = re.sub(",[ ]*,", ",", addr_in).strip()
-        addr_in = re.sub(",$", "", addr_in)
-        addr_in = re.sub("^,", "", addr_in)
-
-    return addr_in
-
-
-def transform_and_process(to_process_addresses, transformers,
-                          check_results=True, osm_structured=False):
-    """
-    - Apply the sequence of transformers (using apply_transformers)
-    - Call OSM on the transformed addresses and parse results (using process_osm)
-    - If there are results with place_rank< 30 (and with_cleansed_number_on_26),
-      try to reprocess them (using retry_with_low_place_rank)
-
-    Parameters
-    ----------
-    to_process_addresses : pd.DataFrame
-        DESCRIPTION.
-    transformers : list
-        sequence of transformer names.
-    check_results : bool, optional
-        Parameter sent to "process_osm". The default is True.
-    osm_structured : bool, optional
-        Parameter sent to "process_osm". The default is False.
-
-    Returns
-    -------
-    osm_results: pd.DataFrame
-         OSM results.
-    rejected: pd.DataFrame
-         rejected recorts from OSM.
-    step_stats: dict
-        statistics.
-    """
-
-    start_time = datetime.now()
-    method = "+".join(transformers)
-
-
-    if to_process_addresses.shape[0]==0 or to_process_addresses[addr_key_field].duplicated().sum() > 0:
-
-        vlog("No more addresses!")
-        step_stats = {"method": method, "todo":  0, "sent": 0, "match": 0, "match_26": 0,
-                      "reject_rec" :0, "reject_addr": 0, "reject_mism": 0}
-        return pd.DataFrame(columns=[addr_key_field]), pd.DataFrame(columns=[addr_key_field, ("work", "reject_reason")]), step_stats
-
-
-    transformed_addresses = apply_transformers(to_process_addresses, transformers,
-                                               check_results=check_results)
-
-
-    if transformed_addresses.shape[0]==0:
-        vlog("No more addresses for this transformers sequence!")
-        step_stats = {"method": method, "todo":  0, "sent": 0, "match": 0, "match_26": 0, "reject_rec" :0, "reject_addr": 0, "reject_mism": 0}
-        return pd.DataFrame(columns=[addr_key_field]), pd.DataFrame(columns=[addr_key_field, ("work", "reject_reason")]), step_stats
-
-    transformed_addresses[transformed_address_field] =   transformed_addresses[street_field].fillna("") + ", "+\
-                                             transformed_addresses[housenbr_field].fillna("") + ", "+\
-                                             transformed_addresses[postcode_field].fillna("") + " " +\
-                                             transformed_addresses[city_field   ].fillna("") + ", "+\
-                                             transformed_addresses[country_field].fillna("")
-
-
-    transformed_addresses[transformed_address_field]= transformed_addresses[transformed_address_field].apply(clean_addr_in)
-
-
-
-    if check_with_transformed :
-        sent_addresses = transformed_addresses
-    else:
-        sent_addresses = transformed_addresses[[transformed_address_field, addr_key_field]].merge(to_process_addresses, on=addr_key_field)
-
-    vlog(f"Will process {sent_addresses.shape[0]} addresses for : transformers = {'+'.join(transformers)}")
-
-    vlog(sent_addresses.head())
-    vlog(sent_addresses.shape)
-
-    update_timestats("t&p > transformer", start_time)
-
-    start_time = datetime.now()
-    osm_results, rejected = process_osm(sent_addresses,
-                                        osm_addr_field=transformed_address_field,
-                                        check_results=check_results,
-                                        osm_structured=osm_structured)
-
-    if with_cleansed_number_on_26 and osm_results.shape[0]>0 :
-
-        osm_results = retry_with_low_place_rank(osm_results, sent_addresses,
-                                                check_results=check_results)
-
-    update_timestats("t&p > process", start_time)
-    osm_results[("work", "method")] = method
-    rejected[("work", "method")] = method
-
-    #log(rejected)
-
-    step_stats = {"method": method,
-      "todo":        to_process_addresses.shape[0],
-      "sent":        sent_addresses.shape[0],
-      "match":       osm_results.shape[0],
-      "match_26":    osm_results[("work", "retry_on_26")].sum() if ("work", "retry_on_26") in osm_results else 0,
-      "reject_rec" : rejected.shape[0],
-      "reject_addr": rejected[addr_key_field].nunique(),
-      "reject_mism": rejected[rejected[("work", "reject_reason")] == "mismatch"][addr_key_field].nunique() if rejected.shape[0]>0 else 0,
-     }
-
-    return osm_results, rejected, step_stats
-
-
-# ## OSM
 
 def process_osm(df, osm_addr_field, accept_language="",
                check_results=True, osm_structured=False) :
@@ -632,45 +524,6 @@ def osm_parse_and_split(df, osm_res_field,
     return osm_results
 
 
-def collapse(df, columns, method="fillna"):
-    """
-    Collapse all columns in "columns" into a single Series.
-    If method = fillna, keep the first non null value (row by row)
-    If method = set, keep all of them, without duplicates, separated by " - "
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Any dataframe.
-    columns : list of str (column names)
-        List of columns to compact into a single out.
-    method : str, optional
-        "set" (keep all values) or "fillna" (keep only the first one).
-        The default is "fillna".
-
-
-    Returns
-    -------
-    res : pd.Series
-        Collapsed column.
-
-    """
-
-    assert method in ["fillna", "set"], "method argument should be either 'fillna' or 'set'"
-
-
-    if method=="fillna":
-
-        res = pd.Series(index = df.index, dtype=str)#[columns[0]]
-
-        for col in columns:
-            if col in df.keys():
-                res = res.fillna(df[col])
-    elif method== "set":
-        res = df[columns].apply(lambda lst: {x for x in lst if not pd.isnull(x)}, axis=1).apply(" - ".join)
-
-    return res
-
 
 def add_addr_out_columns(osm_results, addr_items):
     """
@@ -707,7 +560,114 @@ def add_addr_out_columns(osm_results, addr_items):
     return osm_results
 
 
-# # Transformers
+
+
+
+##############################
+## Global process
+##############################
+
+def transform_and_process(to_process_addresses, transformers,
+                          check_results=True, osm_structured=False):
+    """
+    - Apply the sequence of transformers (using apply_transformers)
+    - Call OSM on the transformed addresses and parse results (using process_osm)
+    - If there are results with place_rank< 30 (and with_cleansed_number_on_26),
+      try to reprocess them (using retry_with_low_place_rank)
+
+    Parameters
+    ----------
+    to_process_addresses : pd.DataFrame
+        DESCRIPTION.
+    transformers : list
+        sequence of transformer names.
+    check_results : bool, optional
+        Parameter sent to "process_osm". The default is True.
+    osm_structured : bool, optional
+        Parameter sent to "process_osm". The default is False.
+
+    Returns
+    -------
+    osm_results: pd.DataFrame
+         OSM results.
+    rejected: pd.DataFrame
+         rejected recorts from OSM.
+    step_stats: dict
+        statistics.
+    """
+
+    start_time = datetime.now()
+    method = "+".join(transformers)
+
+
+    if to_process_addresses.shape[0]==0 or to_process_addresses[addr_key_field].duplicated().sum() > 0:
+
+        vlog("No more addresses!")
+        step_stats = {"method": method, "todo":  0, "sent": 0, "match": 0, "match_26": 0,
+                      "reject_rec" :0, "reject_addr": 0, "reject_mism": 0}
+        return pd.DataFrame(columns=[addr_key_field]), pd.DataFrame(columns=[addr_key_field, ("work", "reject_reason")]), step_stats
+
+
+    transformed_addresses = apply_transformers(to_process_addresses, transformers,
+                                               check_results=check_results)
+
+
+    if transformed_addresses.shape[0]==0:
+        vlog("No more addresses for this transformers sequence!")
+        step_stats = {"method": method, "todo":  0, "sent": 0, "match": 0, "match_26": 0, "reject_rec" :0, "reject_addr": 0, "reject_mism": 0}
+        return pd.DataFrame(columns=[addr_key_field]), pd.DataFrame(columns=[addr_key_field, ("work", "reject_reason")]), step_stats
+
+    transformed_addresses[transformed_address_field] =   transformed_addresses[street_field].fillna("") + ", "+\
+                                             transformed_addresses[housenbr_field].fillna("") + ", "+\
+                                             transformed_addresses[postcode_field].fillna("") + " " +\
+                                             transformed_addresses[city_field   ].fillna("") + ", "+\
+                                             transformed_addresses[country_field].fillna("")
+
+
+    transformed_addresses[transformed_address_field]= transformed_addresses[transformed_address_field].apply(clean_addr_in)
+
+
+    if check_with_transformed :
+        sent_addresses = transformed_addresses
+    else:
+        sent_addresses = transformed_addresses[[transformed_address_field, addr_key_field]].merge(to_process_addresses, on=addr_key_field)
+
+    vlog(f"Will process {sent_addresses.shape[0]} addresses for : transformers = {'+'.join(transformers)}")
+
+    vlog(sent_addresses.head())
+    vlog(sent_addresses.shape)
+
+    update_timestats("t&p > transformer", start_time)
+
+    start_time = datetime.now()
+    osm_results, rejected = process_osm(sent_addresses,
+                                        osm_addr_field=transformed_address_field,
+                                        check_results=check_results,
+                                        osm_structured=osm_structured)
+
+    if with_cleansed_number_on_26 and osm_results.shape[0]>0 :
+
+        osm_results = retry_with_low_place_rank(osm_results, sent_addresses,
+                                                check_results=check_results)
+
+    update_timestats("t&p > process", start_time)
+    osm_results[("work", "method")] = method
+    rejected[("work", "method")] = method
+
+    #log(rejected)
+
+    step_stats = {"method": method,
+      "todo":        to_process_addresses.shape[0],
+      "sent":        sent_addresses.shape[0],
+      "match":       osm_results.shape[0],
+      "match_26":    osm_results[("work", "retry_on_26")].sum() if ("work", "retry_on_26") in osm_results else 0,
+      "reject_rec" : rejected.shape[0],
+      "reject_addr": rejected[addr_key_field].nunique(),
+      "reject_mism": rejected[rejected[("work", "reject_reason")] == "mismatch"][addr_key_field].nunique() if rejected.shape[0]>0 else 0,
+     }
+
+    return osm_results, rejected, step_stats
+
 
 
 def apply_transformers(addresses, transformers, check_results):
@@ -796,319 +756,108 @@ def apply_transformers(addresses, transformers, check_results):
 
     return transformed_addresses[changed].copy()
 
-# ## Photon
 
-photon_street_field   = ("photon","street")
-photon_name_field     = ("photon","name") # Sometimes, streetname is put in "name" field (especially for request without house number)
-photon_postcode_field = ("photon","postcode")
-photon_city_field     = ("photon","city")
-photon_country_field  = ("photon","country")
+##########################
+## Libpostal functions
+#########################
 
-
-def photon_keep_relevant_results(photon_results, addresses):
+def get_lpost_house_number(street):
     """
-    Select from Photon result only those "close enough" from input addresses
+    Use libpostal to extract house_number and box number from street.
 
     Parameters
     ----------
-    photon_results : pd.DataFrame
-        output of process_photon.
-    addresses : pd.DataFrame
-        Input addresses.
+    street : str
+        street name.
 
     Returns
     -------
-    pd.DataFrame
-        Selection of photon_results with only valide records.
+    [house number, box number].
 
     """
-    photon_ext = photon_results.merge(addresses[[addr_key_field,  street_field,
-                                                 housenbr_field, postcode_field,
-                                                 city_field, country_field]])
-    if photon_ext.shape[0] == 0:
-        return pd.DataFrame()
 
-    photon_ext["fake_house_number"] = ""
-
-    vlog("Will compare photon results: ")
-    vlog(photon_ext)
-    keep, _  = ignore_mismatch_keep_bests(photon_ext,
-                                  street_fields_a  = [photon_street_field],
-                                  housenbr_field_a = "fake_house_number",
-                                  postcode_field_a = photon_postcode_field,
-                                  city_field_a = photon_city_field,
-                                  street_field_b =   street_field,
-                                  housenbr_field_b = "fake_house_number",
-                                  postcode_field_b =   postcode_field,
-                                  city_field_b =  city_field,
-                                  secondary_sort_field = ("photon", "photon_order"))
-    return keep
+    try:
+        lpost = parse_address(street)
 
 
-def photon_parse_and_split(res, addr_field, photon_col):
+        housenbr = ";".join([y for (y, x) in lpost if x=="house_number"])
+        boxnbr = ";".join([y for (y, x) in lpost if x=="unit"])
+    except Exception as exc:
+        log(f"Error during processing of 'get_lpost_house_number': {exc}")
+        housenbr = 'error during Libpostal processing'
+        boxnbr   = 'error during Libpostal processing'
+
+    return [housenbr, boxnbr]
+
+
+def add_extra_house_number(osm_addresses):
     """
-    Parse Photon output, and split multiple results in a several rows
+    For all addresses in input fields of "osm_addresses", call libpostal to extract housenumbers
 
     Parameters
     ----------
-    res : pd.DataFrame
-        Dataframe containing Photon output.
-    addr_field : str
-        Column name containing address sent to Photon.
-    photon_col : str
-        Column name containing Photon output.
+    osm_addresses : pd.DataFrame
+        Output of process_osm.
 
     Returns
     -------
-    pd.DataFrame
-        Parsed version of input.
+    pd.DataFrame equivalent from osm_addresses, with 3 additional columns:
+        in_house_number: housenumber in input data
+        lpost_house_number: housenumber from Libpostal
+        lpost_unit: box number from Libpostal
+
 
     """
-    res[("photon","parsed")] = res[photon_col].apply(lambda j:j["features"] if "features" in j else None)
+    vlog("Start adding extra house number")
 
-    res = res.set_index([addr_field])
-
-    ser = res[("photon","parsed")].apply(pd.Series, dtype=object)
-
-    if ser.shape[0] == 0 or ser.shape[1] == 0:
-        return pd.DataFrame(columns = [addr_field])
-
-    photon_results = pd.DataFrame(ser.stack())
-    photon_results.columns = pd.MultiIndex.from_tuples([photon_col], names=["L0", "L1"])
-
-    photon_results = photon_results.reset_index(level=0)
-    #photon_results  = pd.DataFrame(photon_results)
-
-    addr_items = []
-
-    for row in photon_results[photon_col].apply(lambda x: x["properties"]):
-        for addr_item in row.keys():
-            addr_items.append(addr_item)
-
-    addr_items = pd.Series(addr_items).value_counts().iloc[0:30].keys().values
-
-    #prefix="photon_"
-    for addr_item in addr_items:
-        photon_results[("photon", addr_item)] = photon_results[photon_col].apply(lambda x, ad_it=addr_item: x["properties"][ad_it] if ad_it in x["properties"] else None)
-
-    for fld in [photon_street_field, photon_postcode_field, photon_city_field, photon_country_field]:
-        if fld not in photon_results:
-            vlog(f"Photon: adding field {fld}")
-            photon_results[fld] = ""
-
-    if photon_name_field in photon_results:
-        photon_results[photon_street_field] = photon_results[photon_street_field].replace("", pd.NA).fillna(photon_results[photon_name_field])
-
-    photon_results[('photon', 'photon_order')] = photon_results.index #reset_index().rename(columns={"index": "photon_order"})#res #parse_and_split(res, osm_field, key=addr_field)
-
-    return photon_results
-
-def process_photon(df, addr_field):
-    """
-    Sent addresses to Photon (with get_photon), and parse results (photon_parse_and_split)
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Dataframe with addresses to send to Photon.
-    addr_field : str
-        Column of df containing address.
-
-    Returns
-    -------
-    photon_results : TYPE
-        DESCRIPTION.
-
-    """
-
-    photon_col = ("photon", "out")
-
-    to_process = df[[addr_field]].drop_duplicates()
-
-    vlog(f"Photon: Will process {df.shape[0]} with {to_process.shape[0]} unique values")
-
-    to_process[photon_col] = to_process[addr_field].apply(get_photon)
-
-    photon_results = photon_parse_and_split(to_process, addr_field, photon_col)
-
-    vlog(f"Photon got {photon_results.shape[0]} results for {df.shape[0]} addresses")
-
-    if photon_results.shape[0]>0:
-        photon_results = df[[addr_key_field, addr_field]].merge(photon_results)
-    else:
-        photon_results = df[[addr_key_field, addr_field]].copy()
-        photon_results[photon_street_field]=pd.NA
-        photon_results[photon_postcode_field]=pd.NA
-        photon_results[photon_city_field]=pd.NA
-        photon_results[("photon", "photon_order")]=pd.NA
-
-    return photon_results
-
-
-def photon_transformer(addresses, check_results):
-    """
-    Transform "addresses" using Photon
-
-    Parameters
-    ----------
-    addresses : pd.DataFrame
-        Addresses to transform.
-    check_results : boolean
-        Should we check Photon output.
-
-    Returns
-    -------
-    pd.DataFrame
-        Transformed version of "addresses.
-
-    """
-    start_time = datetime.now()
-    photon_addr = addresses[[addr_key_field, street_field, housenbr_field,
-                             postcode_field, city_field, country_field]].copy()
-
-    photon_addr[("photon", "full_addr_in")] = photon_addr[street_field].fillna("") +", "+ photon_addr[postcode_field].fillna("") + " " +photon_addr[city_field].fillna("")+", "+                                 photon_addr[country_field].fillna("")
-
-    # Send to Photon
-    photon_res = process_photon(photon_addr, ("photon", "full_addr_in"))
-
-    if check_results : #and photon_check_results:
-
-        photon_res_sel = photon_keep_relevant_results(photon_res, photon_addr)
-    else:
-        photon_res_sel = photon_res.merge(addresses[[addr_key_field, street_field,
-                                                     housenbr_field, postcode_field,
-                                                     city_field, country_field]])
-
-    if photon_res_sel.shape[0] == 0:
-        return photon_res_sel
-
-    fields = [(street_field, photon_street_field),
-              (housenbr_field, housenbr_field), # We do not consider photon house number
-              (city_field, photon_city_field),
-              (postcode_field, photon_postcode_field),
-              (country_field, photon_country_field)]
-
-    fields_out    = [field_in      for field_in, field_photon in fields]
-    fields_photon = [field_photon  for field_in, field_photon in fields]
-
-    update_timestats("'t&p > transformer > photon", start_time)
-    res= photon_res_sel[[addr_key_field] + fields_photon].rename(columns= {field_photon[1]: field_in[1] for field_in, field_photon in fields}).rename(columns= {"photon":"input"})[[addr_key_field] + fields_out]
-
-    vlog("Photon transformed:")
-    vlog(res)
-    return res
-
-
-# ## Libpostal
-
-lpost_street_field   = ("lpost","road")
-lpost_housenbr_field = ("lpost","house_number")
-lpost_postcode_field = ("lpost","postcode")
-lpost_city_field     = ("lpost","city")
-lpost_country_field  = ("lpost","country")
-
-def libpostal_transformer(addresses,
-                          check_results):
-    """
-    Transform "addresses" using libpostal
-
-    Parameters
-    ----------
-    addresses : pd.DataFrame
-        Addresses to transform.
-    check_results : boolean
-        Should we check libpostaloutput.
-
-     Returns
-     -------
-     pd.DataFrame
-         Transformed version of "addresses.
-    """
     start_time = datetime.now()
 
-    libpost_addr = addresses[[addr_key_field, street_field, housenbr_field, postcode_field, city_field, country_field]].copy()
+    result = osm_addresses
 
-    # Make full address for libpostal
-    libpost_addr[("lpost", "full_addr_in")] = libpost_addr[street_field] + ", "+ libpost_addr[housenbr_field].fillna("")+", "+                    libpost_addr[postcode_field].fillna("") + " " +libpost_addr[city_field].fillna("") +",  " +                    libpost_addr[country_field].fillna("")
+    result[("output", "in_house_number")] = result[housenbr_field]
 
-    # Apply libpostal
-    libpost_addr[("lpost","out")] = libpost_addr[("lpost","full_addr_in")].apply(parse_address)
-    libpost_addr[("lpost", "out")] = libpost_addr[("lpost", "out")].apply(lambda lst: {x: y for (y, x) in lst})
+    lp = result.fillna("").apply(lambda row: get_lpost_house_number(f"{row[street_field]} {row[housenbr_field]}, {row[postcode_field]} {row[city_field]}".strip()), axis=1,  result_type ='expand')
 
-    # Split libpostal results
-    for field in [lpost_street_field, lpost_housenbr_field, lpost_postcode_field, lpost_city_field, lpost_country_field]:
-        libpost_addr[field] =libpost_addr[("lpost", "out")].apply(lambda rec, fld=field[1]: rec[fld] if fld in rec else np.NAN)
+    result[[("output","lpost_house_number"), ("output","lpost_unit")]] = lp
 
-    if check_results:
-        # Keep only "close" results
-        libpost_addr, reject  = ignore_mismatch_keep_bests(libpost_addr,
-                                      street_fields_a      = [street_field],
-                                      housenbr_field_a     = housenbr_field,
-                                      postcode_field_a     = postcode_field,
-                                      city_field_a         = city_field,
-                                      street_field_b       = lpost_street_field,
-                                      housenbr_field_b     = lpost_housenbr_field,
-                                      postcode_field_b     = lpost_postcode_field,
-                                      city_field_b         = lpost_city_field,
-                                      secondary_sort_field = addr_key_field)
-        vlog("Rejected lipbostal results: ")
-        vlog(reject)
-    if libpost_addr.shape[0] == 0:
+    vlog("End of adding extra house number")
+    update_timestats("extra_hn", start_time)
 
-        return pd.DataFrame(columns=[transformed_address_field, addr_key_field])#,  libpost_addr
+    return result
 
 
-    fields =        [(street_field, lpost_street_field), (housenbr_field, lpost_housenbr_field),
-                     (city_field, lpost_city_field), (postcode_field, lpost_postcode_field),
-                     (country_field, lpost_country_field) ]
-    fields_out    = [field_in      for field_in, field_lpost in fields]
-    fields_lpost  = [field_lpost   for field_in, field_lpost in fields]
 
-    update_timestats("'t&p > transformer > libpostal", start_time)
 
-    return libpost_addr[[addr_key_field] + fields_lpost].rename(columns= {field_lpost[1]: field_in[1] for field_in, field_lpost in fields}).rename(columns= {"lpost":"input"})[[addr_key_field] + fields_out]
-
-# ## Regex transformer
-
-def regex_transformer(addresses, regex_key="init"):
+def add_lpost_house_number(addr_in, match, data):
     """
-    Transform "addresses" applying regex defined in config.regex_replacements
+    Use libpostal to get housenumber from address (only for "fast" method)
 
     Parameters
     ----------
-
-    addresses : pd.DataFrame
-        Addresses to transform.
-    regex_key : str, optional
-        set of regex to consider in config.regex_replacements. The default is "init".
+    addr_in : str
+        address to parse.
+    match : dict
+        OSM output.
+    data : dict
+        intput address.
 
     Returns
     -------
-    pd.DataFrame
-        Transformed version of addresses.
+    None.
 
     """
 
-    regex_addr = addresses[[addr_key_field, street_field, housenbr_field,
-                            postcode_field, city_field, country_field]].copy()
 
-    for (field, match, repl) in regex_replacements[regex_key]:
-        vlog(f"{field}: {match}")
-        new_values = regex_addr[field].fillna("").str.replace(match, repl,regex=True)
-        new_values_sel = regex_addr[field].fillna("") != new_values
+    lpost = get_lpost_house_number(addr_in)
 
-        if new_values_sel.sum()>0:
-            vlog(regex_addr[new_values_sel])
+    match["output"]["in_house_number"] = data[housenbr_field] if housenbr_field in data else ""
+    match["output"]["lpost_house_number"] = lpost[0]
+    match["output"]["lpost_unit"] = lpost[1]
 
-            regex_addr[field] = new_values
-            vlog("-->")
-            vlog(regex_addr[new_values_sel])
-        else:
-            vlog("None")
 
-    return regex_addr
-
+#######################
 ## REST utils
+#######################
 
 
 def get_init_df(data):
@@ -1178,31 +927,6 @@ def format_osm_addr(osm_rec):
     return res
 
 
-
-def add_lpost_house_number(addr_in, match, data):
-    """
-    Use libpostal to get housenumber from address (only for "fast" method)
-
-    Parameters
-    ----------
-    addr_in : str
-        address to parse.
-    match : dict
-        OSM output.
-    data : dict
-        intput address.
-
-    Returns
-    -------
-    None.
-
-    """
-
-
-    lpost = get_lpost_house_number(addr_in)
-    match["output"]["in_house_nbr"] = data["housenumber"] if "housenumber" in data else ""
-    match["output"]["lpost_house_nbr"] = lpost[0]
-    match["output"]["lpost_unit"] = lpost[1]
 
 
 def process_address_fast(data, osm_structured=False,
@@ -1278,7 +1002,8 @@ def process_address_fast(data, osm_structured=False,
                     return osm_res_retry
 
                 if osm_res_retry and osm_res_retry["match"][0]["nominatim"]["place_rank"] == 30: # if place_rank is not improved, we keep the original result
-                    osm_res_retry["match"][0]["work"]["cleansed_house_nbr"] = cleansed_housenbr
+                    osm_res_retry["match"][0]["work"]["cleansed_house_number"] = cleansed_housenbr
+                    osm_res_retry["match"][0]["work"]["retry_on_26"] = True
                     if with_extra_house_number:
                         add_lpost_house_number(addr_in, osm_res_retry["match"][0], data)
 
@@ -1485,74 +1210,3 @@ def process_addresses(to_process_addresses, check_results=True,
         osm_addresses = add_extra_house_number(osm_addresses)
 
     return osm_addresses, rejected_addresses #{"match": format_res(osm_results), "rejected": format_res(all_reject)}
-
-
-
-
-
-
-# def remove_empty_values(dct_lst):
-#     """
-#     Remove empty values in a list of dict
-
-#     Parameters
-#     ----------
-#     dct_lst : list (of dicts)
-#         List of dictionaries.
-
-#     Returns
-#     -------
-#     list
-#         Copy of input list, but all empty values in dicts are dropped
-
-#     """
-
-#     return [{k: v for k, v in item.items() if not pd.isnull(v) and v != ""} for item in dct_lst]
-
-
-
-def multiindex_to_dict(df):
-    """
-    Convert a Pandas Dataframe with two-levels multi-index columns into 
-    a list of dictionaries
-
-    Example of input:
-    L0    | col_1   | col_1   | col_2    |
-    L1    | col_1_1 | col_1_2 | col_2_1  |
-    --------------------------------------
-    0     | A       | B       | C        |
-    1     | D       | E       | F        |
-    --------------------------------------
-    
-    corresponding output:
-        [ {'col_1' : {
-                'col_1_1':'A', 
-                'col_1_2':'B'},
-            'col_2' : {
-                'col_2_1': 'C'
-                }},
-        {'col_1' : {
-                'col_1_1':'D', 
-                'col_1_2':'E'},
-            'col_2' : {
-                'col_2_1': 'F'
-                }}
-            ]
-        
-    Parameters
-    ----------
-    df : pd.DataFrame
-        a Pandas Dataframe with two-levels multi-index columns.
-
-    Returns
-    -------
-    list of dict
-        
-
-    """
-    l0_names = df.columns.get_level_values(0).unique()
-
-    res =  [{ k1: {k2: rec[(k1, k2)] for k2 in df[k1].columns.get_level_values(0)} for k1 in l0_names }  for rec in df.to_dict(orient="records")]
-
-
-    return [{k1: {k2: rec[k1][k2] for k2 in rec[k1] if isinstance(rec[k1][k2], list) or (pd.notnull(rec[k1][k2]) and rec[k1][k2] != "")} for k1 in rec} for rec in res]

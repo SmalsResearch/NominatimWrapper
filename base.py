@@ -10,7 +10,11 @@ import urllib
 import json
 
 
+from datetime import datetime, timedelta
+
+
 import requests
+
 
 import pandas as pd
 
@@ -108,7 +112,6 @@ def get_osm(addr, accept_language = ""):
         raise Exception (f"Cannot get OSM results ({osm_host}): {exc}") from exc
 
 
-# In[2]:
 
 
 def get_osm_struct(street, housenumber, postcode, city, country, accept_language = ""):
@@ -266,3 +269,32 @@ def parse_address(address):
     res = json.loads(res.content.decode())
 
     return res
+
+
+timestats = {}
+
+
+# # Functions
+
+# ## Global
+
+
+def update_timestats(label, start_time):
+    """
+    Add delay since 'start_time' (datetime.now()-start_time) to timestats[label]
+
+    Parameters
+    ----------
+    label : str
+        DESCRIPTION.
+    t : timestamp
+        when activity to measure started.
+
+    Returns
+    -------
+    None.
+
+    """
+    if not label in timestats:
+        timestats[label] = timedelta(0)
+    timestats[label] += datetime.now() - start_time

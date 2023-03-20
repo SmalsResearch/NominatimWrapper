@@ -535,7 +535,7 @@ def ignore_mismatch_keep_bests(addr_matches,
 
     #w = distances[(distances[("check","SIM_street")] >= similarity_threshold)&(distances[("check","SIM_street_which")]!=street_fields_a[0] )].merge(addr_matches, left_index=True, right_index=True)
 
-    distances[("check","SIM_house_nbr")] = house_number_compare(addr_matches[housenbr_field_a].fillna(""), addr_matches[housenbr_field_b].fillna(""))
+    distances[("check","SIM_house_number")] = house_number_compare(addr_matches[housenbr_field_a].fillna(""), addr_matches[housenbr_field_b].fillna(""))
 
     distances[("check","SIM_zip")] =       postcode_compare(addr_matches[postcode_field_a].fillna(""), addr_matches[postcode_field_b].fillna(""))
 
@@ -551,7 +551,7 @@ def ignore_mismatch_keep_bests(addr_matches,
 
 
     # Remove non acceptable results
-    result = addr_matches[~elimination_rule].merge(distances, left_index=True, right_index=True).sort_values([addr_key_field, ("check","SIM_street"), ("check","SIM_house_nbr"), secondary_sort_field], ascending=[True, False, False, True])
+    result = addr_matches[~elimination_rule].merge(distances, left_index=True, right_index=True).sort_values([addr_key_field, ("check","SIM_street"), ("check","SIM_house_number"), secondary_sort_field], ascending=[True, False, False, True])
 
     vlog("result:")
     vlog(result)

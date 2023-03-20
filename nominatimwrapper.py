@@ -19,8 +19,6 @@ Flask part of NominatimWrapper
 # - "namespace" is empty
 # - Full address en batch
 # - split/reorganise util.py
-# - fast: "others" in nominatim
-# - 'mode' in search 
 # - according to 'mode', avoid to compute useless things
 # - distToMatch in non fast mode
 
@@ -47,14 +45,14 @@ import pandas as pd
 logging.basicConfig(format='[%(asctime)s]  %(message)s', stream=sys.stdout) # does not work if I put if after the next import...
 
 
-from base import (log, vlog, get_osm, get_photon)
+from base import (log, vlog, get_osm, get_photon, update_timestats, timestats)
 
 
 from utils import (parse_address,
                                   addr_key_field, street_field, housenbr_field,
                                   postcode_field, city_field, country_field,
                                   process_address, process_addresses,
-                                  update_timestats, timestats, to_camel_case,
+                                   to_camel_case,
                    #               convert_street_components,
                                    # remove_empty_values,
                                    multiindex_to_dict)
@@ -125,32 +123,62 @@ vlog("Transformers:")
 vlog(transformers_sequence)
 
 
+def check_osm():
+    try:
+        osm_res = get_osm(city_test_from)
+        if city_test_to[0] in osm_res[0]["namedetails"]["name:fr"]:
+            return True # Everything is fine
+        return osm  # Server answers, but gives an unexpected result
+    except Exception as exc:
+        vlog("Exception occured: ")
+        vlog(exc)
+        return False    # Server does not answer
+
+def check_libpostal():
+    try:
+        lpost_res = parse_address(city_test_from)
+        if lpost_res[0][0].lower() == city_test_to[0].lower():
+            return True # Everything is fine
+        return osm  # Server answers, but gives an unexpected result
+    except Exception as exc:
+        vlog("Exception occured: ")
+        vlog(exc)
+        return False    # Server does not answer
+
+
+def check_photon():
+    try:
+        photon_res = get_photon("Bruxelles")
+        if city_test_to[0] in photon_res["features"][0]["properties"]["name"] or \
+               city_test_to[1] in photon_res["features"][0]["properties"]["name"]:
+            return True # Everything is fine
+        return osm  # Server answers, but gives an unexpected result
+    except Exception as exc:
+        vlog("Exception occured: ")
+        vlog(exc)
+        return False    # Server does not answer
+
 
 
 # Check that Nominatim server is running properly
 # Adapt with the city of your choice!
 delay=2
 for i in range(10):
-    osm = None
-    try:
-        osm = get_osm(city_test_from)
-        assert city_test_to[0] in osm[0]["namedetails"]["name:fr"]
-
+    osm = check_osm()
+    if osm is True:
         log("Nominatim working properly")
         break
-
-    except Exception:
-        log("Nominatim not up & running")
-        log(f"Try again in {delay} seconds")
-        if osm is not None:
-            log("Answer:")
-            log(osm)
+    log("Nominatim not up & running")
+    log(f"Try again in {delay} seconds")
+    if osm is not False:
+        log("Answer:")
+        log(osm)
 
         log(f"Nominatim host: {osm_host}")
 
         #raise e
-        time.sleep(delay)
-        delay+=0.5
+    time.sleep(delay)
+    delay+=0.5
 if i == 9:
     log("Nominatim not up & running !")
     log(f"Nominatim: {osm_host}")
@@ -160,22 +188,18 @@ if i == 9:
 # Check that Libpostal is running properly
 delay=2
 for i in range(10):
-    lpost=None
-    try:
-        lpost = parse_address(city_test_from)
-        assert lpost[0][0].lower() == city_test_to[0].lower()
+    lpost=check_libpostal()
+    if lpost is True:
         log("Libpostal working properly")
         break
+    log("Libpostal not up & running ")
+    log(f"Try again in {delay} seconds")
+    if lpost is not False:
+        log("Answer:")
+        log(lpost)
 
-    except Exception:
-        log("Libpostal not up & running ")
-        log(f"Try again in {delay} seconds")
-        if lpost is not None:
-            log("Answer:")
-            log(lpost)
-
-        time.sleep(delay)
-        delay+=0.5
+    time.sleep(delay)
+    delay+=0.5
     #raise e
 if i == 9:
     log("Libpostal not up & running !")
@@ -187,21 +211,16 @@ if i == 9:
 # Check that Photon server is running properly
 delay=2
 for i in range(10):
-    try:
-        phot=""
-        phot = get_photon("Bruxelles")
-        assert city_test_to[0] in phot["features"][0]["properties"]["name"] or \
-               city_test_to[1] in phot["features"][0]["properties"]["name"]
+    phot=check_photon()
+    if phot is True:
         log("Photon working properly")
         break
-
-
-    except Exception:
-        log("Photon not up & running ")
-        log(f"Try again in {delay} seconds")
+    log("Photon not up & running ")
+    log(f"Try again in {delay} seconds")
+    if phot is not False:
         log(phot)
-        time.sleep(delay)
-        delay+=0.5
+    time.sleep(delay)
+    delay+=0.5
 
         #raise e
 if i == 9:
@@ -305,7 +324,20 @@ single_parser.add_argument('houseNumber', type=str, help='House number')
 single_parser.add_argument('city',        type=str, help='City name')
 single_parser.add_argument('postCode',    type=str, help='Postal code')
 single_parser.add_argument('country',     type=str, help='Country name')
+single_parser.add_argument('addrKey',     type=str, help='Address key (optional, simply copied in output)')
 single_parser.add_argument('fullAddress',     type=str, help='Full address in a single field')
+
+single_parser.add_argument('mode',
+                          type=str,
+                          choices=('geo', 'short', 'long'),
+                          default='short',
+                          help="""
+Selection of columns in the ouput :
+
+- geo: only return lat/long
+- short: return lat/long, cleansed address (street, number, zipcode, city, country)
+- long: return all results from Nominatim""")
+
 
 single_parser.add_argument('withRejected',
                            type=str,
@@ -322,7 +354,7 @@ single_parser.add_argument('structOsm',
                            choices=('yes', 'no'),
                            default='no',
                            help='If "yes", will call the structured version of OSM')
-single_parser.add_argument('extraHouseNbr',
+single_parser.add_argument('extraHouseNumber',
                            type=str,
                            choices=('yes', 'no'),
                            default='yes',
@@ -350,51 +382,55 @@ class Search(Resource):
     @namespace.response(200, 'Found a match for this address (or some rejected addresses)')
     @namespace.response(204, 'No address found, even rejected')
 
-    
-            
+
+
     def get(self):
         """
-        Geocode a single address.
+Geocode a single address.
 
-        Returns
-        -------
+Returns
+-------
+Returns a dictionary with 2 parts. Depending of parameter "mode", various fields could be found.
 
-        Returns a dictionary with 2 parts
+In 'long' mode, each record will contain the following blocs:
 
-        - match: a single result, with the following blocs:
-            - input : all columns present in input data, but at least "addrKey" (if provided), "streetName", "houseNumber", "postCode", "city", "country"
-            - output: consolidated result of geocoding :
-                - streetName: first non null value in ["road", "pedestrian","footway", "cycleway", "path", "address27", "construction", "hamlet", "park"]
-                - houseNumber: house_number
-                - postCode: postcode
-                - city: first non null value in ["town", "village", "city_district", "county", "city"],
-                - country: country
-                - other: concatenate all values which were not picked by one of the above item
-                - inHouseNumber: equivalent to input->houseNumber
-                - lpostHouseNbr: "housenumber" provided by libpostal receiving concatenation of street and house number (from input)
-                - lpostUnit: "unit"  provided by libpostal receiving concatenation of street and house number (from input)
-            - work: some metadata describing geocoding process:
-                - transformedAddress: what address (after possibly some sequence of transformations) is actually sent to Nominatim
-                - method: which transformation methods were used before sending the address to Nominatim. If the address was found without any transformation, will be "orig" (or "fast")
-                - osmOrder: what was the rank of this result in Nominatim result (more usefull in 'rejected' part)
-                - retryOn_26: If placeRank in match record is below 30 and housenumber (in input) contains other characters than digits, we retry to call Nominatim by only considering the first digits of housenumber: "30A","30.3", "30 bt 2", "30-32" become "30". If it gives a result with place_rank = 30, we keep it (in this case, a "cleansedHouseNbr" appears in the output, with "30" in this example), and this field is set to "True"
-            - nominatim: selection of fields received from Nominatim:
-                - lat
-                - lon
-                - placeRank
-                - displayName
-                - all fields in the "address" bloc
-            - check:  Check results indicators (if checkResult='yes'):
-                - SIMStreetWhich
-                - SIMStreet
-                - SIMCity
-                - SIMZip
-                - SIMHouseNbr
-                
-        - reject: list of rejected results, with most of the same fields, with additionnal fields:
-             - rejectReason: 'mismatch" or "tail"
-             - distToMatch: distance (in kilometer) to the result given in "match"
+- match: a single result, with the following blocs:
+    - input : all columns present in input data, but at least "addrKey" (if provided), "streetName", "houseNumber", "postCode", "city", "country"
+    - output: consolidated result of geocoding :
+        - streetName: first non null value in ["road", "pedestrian","footway", "cycleway", "path", "address27", "construction", "hamlet", "park"]
+        - houseNumber: house_number
+        - postCode: postcode
+        - city: first non null value in ["town", "village", "city_district", "county", "city"],
+        - country: country
+        - other: concatenate all values which were not picked by one of the above item
+        - inHouseNumber: equivalent to input->houseNumber
+        - lpostHouseNumber: "housenumber" provided by libpostal receiving concatenation of street and house number (from input)
+        - lpostUnit: "unit"  provided by libpostal receiving concatenation of street and house number (from input)
+    - work: some metadata describing geocoding process:
+        - transformedAddress: what address (after possibly some sequence of transformations) is actually sent to Nominatim
+        - method: which transformation methods were used before sending the address to Nominatim. If the address was found without any transformation, will be "orig" (or "fast")
+        - osmOrder: what was the rank of this result in Nominatim result (more usefull in 'rejected' part)
+        - retryOn_26: If placeRank in match record is below 30 and housenumber (in input) contains other characters than digits, we retry to call Nominatim by only considering the first digits of housenumber: "30A","30.3", "30 bt 2", "30-32" become "30". If it gives a result with place_rank = 30, we keep it (in this case, a "cleansedHouseNumber" appears in the output, with "30" in this example), and this field is set to "True"
+    - nominatim: selection of fields received from Nominatim:
+        - lat
+        - lon
+        - placeRank
+        - displayName
+        - all fields in the "address" bloc
+    - check:  Check results indicators (if checkResult='yes'):
+        - SIMStreetWhich
+        - SIMStreet
+        - SIMCity
+        - SIMZip
+        - SIMHouseNumber
 
+- reject: list of rejected results, with most of the same fields, with additionnal fields:
+     - rejectReason: 'mismatch" or "tail"
+     - distToMatch: distance (in kilometer) to the result given in "match"
+
+In 'geo' mode: only 'lat', 'lon', and 'placeRank' values from 'nominatim', 'addrKey' from 'input', and 'method' from 'work'
+
+In 'short' mode: idem as 'geo', plus full 'output' bloc
 
         """
 
@@ -412,6 +448,11 @@ class Search(Resource):
                country_field  : get_arg(country_field[1],     ""),
                addr_key_field  : get_arg(addr_key_field[1],     ""),
               }
+
+        mode = get_arg("mode", "short")
+        if not mode in ["geo", "short", "long"]:
+            return [{"error": f"Invalid mode {mode}"}], 400
+
 
 
         used_fields = list(filter(lambda x: data[x]!="", data))
@@ -431,9 +472,9 @@ class Search(Resource):
         if osm_structured is None:
             return [{"error": error_msg%('structOsm')}], 400
 
-        with_extra_house_number =  get_yesno_arg("extraHouseNbr", "yes")
+        with_extra_house_number =  get_yesno_arg("extraHouseNumber", "yes")
         if with_extra_house_number is None:
-            return [{"error": error_msg%('extraHouseNbr')}], 400
+            return [{"error": error_msg%('extraHouseNumber')}], 400
 
         if address != "":
             if len(used_fields)>0:
@@ -451,6 +492,8 @@ class Search(Resource):
         log(f"check_results:   {check_results}")
         log(f"osm_structured:  {osm_structured}")
         log(f"extra_house_nbr: {with_extra_house_number}")
+        log(f"mode:            {mode}")
+
 
         log(f"Input: {data}")
 
@@ -464,14 +507,40 @@ class Search(Resource):
 
         log(f"Result: {res}")
 
+        def filter_dict(dict_data, fields):
+            return { f1: {f2:dict_data[f1][f2] for f2 in fields[f1] if f2 in dict_data[f1] } for f1 in fields if f1 in dict_data}
+        try:
+
+            if mode == "geo":
+                fields={addr_key_field[0]:[addr_key_field[1]], "nominatim": ["lat", "lon", "place_rank"], "work": ["method", "reject_reason", "dist_to_match"]}
+
+            elif mode == "short":
+                fields={addr_key_field[0]:[addr_key_field[1]],
+                        "nominatim": ["lat", "lon", "place_rank"],
+                        "work": ["method","reject_reason", "dist_to_match"],
+                        "output": res["match"][0]["output"]}
+
+            elif mode == "long":
+                fields = None
+
+            if fields:
+                res["match"] =    [filter_dict(res["match"][0], fields)]
+
+            if not with_rejected and "rejected" in res:
+                del res["rejected"]
+            elif fields:
+                res["rejected"] = [filter_dict(rec, fields) for rec in res["rejected"]]
+
+            log(f"Result after selection: {res}")
+
+        except KeyError as ex:
+            log(f"Error during column selection: {ex}")
+
 
         update_timestats("global", start_time)
 
         if with_timing_info:
             res["timing"] = {k: v.total_seconds()*1000 for k, v in timestats.items()}
-
-        if not with_rejected and "rejected" in res:
-            del res["rejected"]
 
 
         if "error" in res:
@@ -525,7 +594,7 @@ batch_parser.add_argument('structOsm',
                           choices=('yes', 'no'),
                           default='no',
                           help='if "yes", will call the structured version of OSM')
-batch_parser.add_argument('extraHouseNbr',
+batch_parser.add_argument('extraHouseNumber',
                           type=str,
                           choices=('yes', 'no'),
                           default='yes',
@@ -544,12 +613,12 @@ class Batch(Resource):
 
     def post(self):
         """
-        Geocode all addresses in csv like file.
+Geocode all addresses in csv like file.
 
-        Returns
-        -------
-        A json dictionary of the shape {'match': [<list of dictionaries>]} containing geocoded addresses. Depending of parameter "mode", following fields could be found:
-        In 'long' mode, each record will contain the following blocs:
+Returns
+-------
+A json dictionary of the shape {'match': [<list of dictionaries>]} containing geocoded addresses. Depending of parameter "mode", following fields could be found:
+In 'long' mode, each record will contain the following blocs:
 
 - input : all columns present in input data, but at least "addrKey", "streetName", "houseNumber", "postCode", "city", "country"
 - output: consolidated result of geocoding :
@@ -560,13 +629,13 @@ class Batch(Resource):
     - country: country
     - other: concatenate all values which were not picked by one of the above item
     - inHouseNumber: equivalent to input->houseNumber
-    - lpostHouseNbr: "housenumber" provided by libpostal receiving concatenation of street and house number (from input)
+    - lpostHouseNumber: "housenumber" provided by libpostal receiving concatenation of street and house number (from input)
     - lpostUnit: "unit"  provided by libpostal receiving concatenation of street and house number (from input)
 - work: some metadata describing geocoding process:
     - transformedAddress: what address (after possibly some sequence of transformations) is actually sent to Nominatim
     - method: which transformation methods were used before sending the address to Nominatim. If the address was found without any transformation, will be "orig" (or "fast")
     - osmOrder: what was the rank of this result in Nominatim result (more usefull in 'rejected' part)
-    - retryOn_26: If placeRank in match record is below 30 and housenumber (in input) contains other characters than digits, we retry to call Nominatim by only considering the first digits of housenumber: "30A","30.3", "30 bt 2", "30-32" become "30". If it gives a result with place_rank = 30, we keep it (in this case, a "cleansedHouseNbr" appears in the output, with "30" in this example), and this field is set to "True"
+    - retryOn_26: If placeRank in match record is below 30 and housenumber (in input) contains other characters than digits, we retry to call Nominatim by only considering the first digits of housenumber: "30A","30.3", "30 bt 2", "30-32" become "30". If it gives a result with place_rank = 30, we keep it (in this case, a "cleansedHouse" appears in the output, with "30" in this example), and this field is set to "True"
 - nominatim: selection of fields received from Nominatim:
     - lat
     - lon
@@ -578,8 +647,8 @@ class Batch(Resource):
     - SIMStreet
     - SIMCity
     - SIMZip
-    - SIMHouseNbr
-        
+    - SIMHouseNumber
+
 In 'geo' mode: only 'lat', 'lon', and 'placeRank' values from 'nominatim', 'addrKey' from 'input', and 'method' from 'work'
 
 In 'short' mode: idem as 'geo', plus full 'output' bloc
@@ -611,9 +680,9 @@ If "withRejected=yes", an additional field 'rejected' with all rejected records 
         if osm_structured is None:
             return [{"error": error_msg%('structOsm')}], 400
 
-        with_extra_house_number =  get_yesno_arg("extraHouseNbr", "yes")
+        with_extra_house_number =  get_yesno_arg("extraHouseNumber", "yes")
         if with_extra_house_number is None:
-            return [{"error": error_msg%('extraHouseNbr')}], 400
+            return [{"error": error_msg%('extraHouseNumber')}], 400
 
         if len(list(request.files.keys()))==0:
             return [{"error": "No file data was provided"}], 400
@@ -681,9 +750,9 @@ If "withRejected=yes", an additional field 'rejected' with all rejected records 
                 fields=[addr_key_field,
                            ("nominatim", "lat"), ("nominatim", "lon"), ("nominatim", "place_rank"), ("nominatim", "place_id"), ("work", "method"),
                             ] + [("output", f) for f in res[("output")].columns]
-    
+
                 res = df.merge(res)[fields]
-                
+
                 rejected_addresses = rejected_addresses[[ f for f in fields if f in rejected_addresses ]]
             elif mode == "long":
                 pass
@@ -696,7 +765,7 @@ If "withRejected=yes", an additional field 'rejected' with all rejected records 
         log("Output: \n"+res.iloc[:, 0:9].to_string(max_rows=9))
 
         res = multiindex_to_dict(res)
-        
+
         res= {'match': res}
         if with_rejected:
             rejected_addresses = multiindex_to_dict(rejected_addresses)
@@ -728,52 +797,47 @@ class Health(Resource):
         """
         # Checking Nominatim
 
-        try:
-            osm = get_osm(city_test_from)
-            if not city_test_to[0] in osm[0]["namedetails"]["name:fr"]:
+        osm_res = check_osm()
 
-                return {"status": "DOWN",
-                        "details": {"errorMessage": "Nominatim server answers, but gives an unexpected answer",
-                                "details": f"Nominatim answer: {osm}"}}, 503
-
-        except Exception as exc:
-
+        if osm_res is False:
             log("Nominatim not up & running")
             log(f"Nominatim host: {osm_host}")
 
             return {"status": "DOWN",
                     "details": {"errorMessage": "Nominatim server does not answer",
-                                "details": f"{exc}"}}, 503
+                                "details": "Nominatim server does not answer"}}, 503
+        if osm_res is not True:
+            return {"status": "DOWN",
+                    "details": {"errorMessage": "Nominatim server answers, but gives an unexpected answer",
+                                "details": f"Nominatim answer: {osm_res}"}}, 503
+
+
 
         # Checking Libpostal
 
-        try:
-            lpost = parse_address(city_test_from)
-            if len(lpost) < 1 or len(lpost[0]) < 1 or lpost[0][0].lower() != city_test_to[0].lower():
-                return {"status": "DEGRADED",
-                        "details": {"errorMessage": "Libpostal server answers, but gives an unexpected answer",
-                                    "details": f"Libpostal answer: {lpost}"}}, 200
-
-        except Exception as exc:
+        lpost_res = check_libpostal()
+        if lpost_res is False:
             log("Libpostal not up & running ")
 
             return {"status": "DEGRADED",
                     "details": {"errorMessage": "Libpostal server does not answer",
-                                "details": f"{exc}"}}, 200
+                                "details": "Libpostal server does not answer"}}, 200
+
+        if lpost_res is not True:
+            return {"status": "DEGRADED",
+                    "details": {"errorMessage": "Libpostal server answers, but gives an unexpected answer",
+                                    "details": f"Libpostal answer: {lpost_res}"}}, 200
 
         # Checking Photon
 
-        try:
-            phot=""
-            phot = get_photon(city_test_from)
-            if not city_test_to[0] in phot["features"][0]["properties"]["name"] and \
-               not city_test_to[1] in phot["features"][0]["properties"]["name"]:
-                return {"status": "DEGRADED",
-                        "details": {"errorMessage": "Photon server answers, but gives an unexpected answer",
-                                "details": f"Photon answer: {phot}"}}, 200
-        except Exception as exc:
+        photon_res= check_photon()
+        if photon_res is False:
             return {"status": "DEGRADED",
                 "details": {"errorMessage": "Photon server does not answer",
-                        "details": f"{exc}"}}, 200
+                            "details":  "Photon server does not answer"}}, 200
+        if photon_res is not True:
+            return {"status": "DEGRADED",
+                    "details": {"errorMessage": "Photon server answers, but gives an unexpected answer",
+                            "details": f"Photon answer: {photon_res}"}}, 200
 
         return {"status": "UP"}, 200
