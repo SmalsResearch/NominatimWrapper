@@ -791,7 +791,7 @@ class Health(Resource):
         Returns
         -------
         - {'status': 'DOWN'}: Nominatim server does not answer (or gives an unexpected answer)
-        - {'status': 'DEGRADED'}: Either Libpostal or Photon is down (or gives an unexpected answer). Geocoding is still possible as long as it does not requires one of those transformer
+        - {'status': 'DEGRADED'}: Either Libpostal or Photon is down (or gives an unexpected answer). Geocoding is still possible as long as it does not requires one of those transformers
         - {'status': 'UP'}: Service works correctly
 
         """
