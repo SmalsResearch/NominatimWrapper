@@ -52,9 +52,10 @@ services:
       - PHOTON_HOST=photon:2322
       - LPOST_HOST=libpostal:7000
       - OSM_HOST=nominatim:8080
-      - LOG_LEVEL=low
-      - TIMING=yes
+      - LOG_LEVEL=medium
+      - TIMING=no
       - FASTMODE=yes
+      - HTTPS=yes
 #       - TRANSFORMERS=[ ["orig"],
 #                           ["regex[init]"],
 #                           ["nonum"],

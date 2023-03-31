@@ -1,26 +1,28 @@
-FROM centos:7
+#FROM centos:8
 
 # Install Python & Packages
 
+#RUN sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*
+#RUN sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
+#RUN yum -y update && yum -y install python3-3.8 gcc-4.8.5 yum-utils && package-cleanup --leaves --all
 
-# RUN echo "proxy=https://192.168.201.1:3128" >> /etc/yum.conf 
+FROM centos/python-38-centos7
 
-RUN yum -y update && yum -y install python3-3.6.8 python3-devel-3.6.8 gcc-4.8.5 yum-utils && package-cleanup --leaves --all
-
-RUN pip3 install Flask==1.1.2 gunicorn==20.0.4 pandas==1.1.4 numpy==1.19.4 matplotlib==3.3.3 requests==2.25.0 dask==2.30.0 dask[dataframe] toolz==0.11.1 jellyfish==0.8.2 tqdm==4.53.0 fsspec==0.8.4 IPython==7.16.1 openpyxl==3.0.1 psutil==5.7.0 bokeh==2.2.3  pillow==5.4.1 geopy==2.2.0
+COPY Docker/requirements.txt ./
+RUN pip3 install  -r requirements.txt
 
 # Install code
 #
 
-RUN mkdir /NominatimWrapper
-WORKDIR /NominatimWrapper
+RUN mkdir NominatimWrapper
+WORKDIR NominatimWrapper
 COPY *.py ./
 
 ENV LANG en_US.UTF-8  
 ENV LANGUAGE en_US:en  
 ENV LC_ALL en_US.UTF-8     
 
-WORKDIR /
+#WORKDIR /
 
 
 COPY Docker/start.sh /start.sh

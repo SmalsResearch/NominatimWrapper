@@ -34,7 +34,7 @@ RUN pip3 install postal
 RUN mkdir /NominatimWrapper
 WORKDIR /NominatimWrapper
 
-COPY LibpostalREST.py ./
+COPY libpostal_rest.py ./
 
 
 COPY Docker/start.sh /start.sh
