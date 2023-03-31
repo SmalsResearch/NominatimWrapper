@@ -160,14 +160,7 @@ When "FASTMODE" option is set to "yes" in docker-compose file (services > wrappe
     - "country":  "country",
     - "postCode": "postcode",
     - fields ["display_name", "place_id", "lat","lon", "place_rank"] as simply copied from Nominatim output
-<<<<<<< HEAD
-- "match" corresponds to the first result (with "method" set to "fast"), "reject" to all others (with "reject_reason" set to "tail") if any
-- If place_rank in match record is below 30 and housenumber (in input) contains other characters than digits, we retry to call Nominatim by only considering the first digits of housenumber : "30A","30.3", "30 bt 2", "30-32" become "30". If it gives a result with place_rank = 30, we keep it (in this case, a "cleansed_house_nbr" appears in the output, with "30" in this example). Otherwise, we keep the original result 
-- If extra_house_nbr is 'yes', we apply the method described above (in REST API > options) to enrich record with libpostal data. 
-
-=======
 - "match" corresponds to the first result (with "method" set to "fast"), "reject" to all others (with "rejectReason" set to "tail") if any
 - If place_rank in match record is below 30 and housenumber (in input) contains other characters than digits, we retry to call Nominatim by only considering the first digits of housenumber : "30A","30.3", "30 bt 2", "30-32" become "30". If it gives a result with place_rank = 30, we keep it (in this case, a "cleansedHouseNumber" appears in the output, with "30" in this example). Otherwise, we keep the original result 
 - If extraHouseNumber is 'yes', we apply the method described above (in REST API > options) to enrich record with libpostal data. 
->>>>>>> restguidelines
     
