@@ -27,6 +27,7 @@ With this option, a scripts "full_build.sh" will build Nominatim, extract from t
 
 ### Stop
 `docker stop nominatimwrapper_wrapper_1  nominatimwrapper_photon_1  nominatimwrapper_libpostal_1  nominatim`
+
 `docker rm nominatim` # otherwise next 'up' will (sometimes) fail. Why?? 
 
 ## Appart Nominatim
