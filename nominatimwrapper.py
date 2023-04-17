@@ -289,8 +289,8 @@ app = Flask(__name__)
 api = Api(app,
           version='0.1',
           title='NominatimWrapper API',
-          description="""A geocoder built upon Nominatim.
-
+          description="""A service that allows geocoding (postal address cleansing and conversion into geographical coordinates), based on Nominatim (OpenStreetMap),
+          
           Source available on: https://github.com/SmalsResearch/NominatimWrapper/
 
           """,
@@ -372,6 +372,8 @@ class Search(Resource):
 
     def post(self):
         """
+        Geocode a single address.
+        
         Cf GET version
         """
         return self.get()
@@ -409,7 +411,7 @@ In 'long' mode, each record will contain the following blocs:
     - work: some metadata describing geocoding process:
         - transformedAddress: what address (after possibly some sequence of transformations) is actually sent to Nominatim
         - method: which transformation methods were used before sending the address to Nominatim. If the address was found without any transformation, will be "orig" (or "fast")
-        - osmOrder: what was the rank of this result in Nominatim result (more usefull in 'rejected' part)
+        - osmOrder: what was the rank of this result in Nominatim result (more useful in 'rejected' part)
         - retryOn_26: If placeRank in match record is below 30 and housenumber (in input) contains other characters than digits, we retry to call Nominatim by only considering the first digits of housenumber: "30A","30.3", "30 bt 2", "30-32" become "30". If it gives a result with place_rank = 30, we keep it (in this case, a "cleansedHouseNumber" appears in the output, with "30" in this example), and this field is set to "True"
     - nominatim: selection of fields received from Nominatim:
         - lat
@@ -512,7 +514,7 @@ In 'short' mode: idem as 'geo', plus full 'output' bloc
         try:
 
             if mode == "geo":
-                fields={addr_key_field[0]:[addr_key_field[1]], "nominatim": ["lat", "lon", "place_rank"], "work": ["method", "reject_reason", "dist_to_match"]}
+                fields={addr_key_field[0]:[addr_key_field[1]], "nominatim": ["lat", "lon", "place_rank"], "work": ["method", "reject_reason"]}
 
             elif mode == "short":
                 fields={addr_key_field[0]:[addr_key_field[1]],
@@ -634,8 +636,8 @@ In 'long' mode, each record will contain the following blocs:
 - work: some metadata describing geocoding process:
     - transformedAddress: what address (after possibly some sequence of transformations) is actually sent to Nominatim
     - method: which transformation methods were used before sending the address to Nominatim. If the address was found without any transformation, will be "orig" (or "fast")
-    - osmOrder: what was the rank of this result in Nominatim result (more usefull in 'rejected' part)
-    - retryOn_26: If placeRank in match record is below 30 and housenumber (in input) contains other characters than digits, we retry to call Nominatim by only considering the first digits of housenumber: "30A","30.3", "30 bt 2", "30-32" become "30". If it gives a result with place_rank = 30, we keep it (in this case, a "cleansedHouse" appears in the output, with "30" in this example), and this field is set to "True"
+    - osmOrder: what was the rank of this result in Nominatim result (more useful in 'rejected' part)
+    - retryOn26: If placeRank in match record is below 30 and housenumber (in input) contains other characters than digits, we retry to call Nominatim by only considering the first digits of housenumber: "30A","30.3", "30 bt 2", "30-32" become "30". If it gives a result with place_rank = 30, we keep it (in this case, a "cleansedHouse" appears in the output, with "30" in this example), and this field is set to "True"
 - nominatim: selection of fields received from Nominatim:
     - lat
     - lon
@@ -743,15 +745,17 @@ If "withRejected=yes", an additional field 'rejected' with all rejected records 
         try:
 
             if mode == "geo":
-                fields= [addr_key_field, ("nominatim", "lat"), ("nominatim", "lon"), ("nominatim", "place_rank"), ("work", "method")]
-                res = res[fields]
+                fields= [addr_key_field, ("nominatim", "lat"), ("nominatim", "lon"), ("nominatim", "place_rank"), ("work", "method"), ("work", "reject_reason")]
+                res = res[[ f for f in fields if f in res ] ]
                 rejected_addresses = rejected_addresses[ [ f for f in fields if f in rejected_addresses ] ]
             elif mode == "short":
                 fields=[addr_key_field,
-                           ("nominatim", "lat"), ("nominatim", "lon"), ("nominatim", "place_rank"), ("nominatim", "place_id"), ("work", "method"),
+                           ("nominatim", "lat"), ("nominatim", "lon"), ("nominatim", "place_rank"), ("nominatim", "place_id"), ("work", "method"),("work", "dist_to_match"), ("work", "reject_reason")
                             ] + [("output", f) for f in res[("output")].columns]
 
-                res = df.merge(res)[fields]
+                res = df.merge(res)
+                res = res[[ f for f in fields if f in res ]]
+                
 
                 rejected_addresses = rejected_addresses[[ f for f in fields if f in rejected_addresses ]]
             elif mode == "long":

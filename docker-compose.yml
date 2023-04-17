@@ -31,7 +31,7 @@ services:
       - NB_WORKERS=8
       - PHOTON_HOST=photon:2322
       - LPOST_HOST=libpostal:7000
-      - OSM_HOST=172.27.0.64:8080 #172.17.0.2:8080 #172.17.0.2:8080  #10.1.0.45:7070
+      - OSM_HOST=172.27.0.64:8080 # If Nominatim is running on the same machine with port forwarding 8080->8080, this will typically the IP of the host machine (not the IP of the Docker container)
       - LOG_LEVEL=low
       - TIMING=no
       - FASTMODE=yes

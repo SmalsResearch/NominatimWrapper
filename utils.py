@@ -422,7 +422,19 @@ def process_osm(df, osm_addr_field, accept_language="",
         result_head = osm_results.groupby([addr_key_field]).head(1).copy()
 
         osm_reject = osm_results[~osm_results.index.isin(result_head.index)].copy()
+        
+#         log("head:")
+#         log(result_head)
+#         log("rejected: ")
+#         log(osm_reject)
+        
+#         osm_reject = osm_reject.merge(result_head[[addr_key_field, ("nominatim", "lat"), ("nominatim", "lon")]].rename(columns={"nominatim": "nominatim_match"}))
+#         log(osm_reject)
+        
         osm_reject[("work", "reject_reason")] = "tail"
+        #osm_reject[("work", "dist_to_match")] = osm_reject.apply(lambda rec: round(distance( (rec[("nominatim", "lat")], rec[("nominatim", "lon")]), (rec[("nominatim_match", "lat")], rec[("nominatim_match", "lon")])).km, 3), axis=1)
+        
+        
         osm_results = result_head
 
     vlog("     - Done!")
@@ -1040,6 +1052,26 @@ def process_address_fast(data, osm_structured=False,
 
 
 
+def add_dist_to_match(osm_results, osm_reject):
+    if osm_reject.shape[0] ==0:
+        return osm_reject
+    # log("add_dist_to_match")
+    s_bef =osm_reject.shape[0] 
+    osm_reject = osm_reject.merge(osm_results[[addr_key_field, ("nominatim", "lat"), ("nominatim", "lon")]].rename(columns={"nominatim": "nominatim_match"}), how="left")
+    
+    
+    # log(osm_reject)
+    assert s_bef ==osm_reject.shape[0] 
+    
+    osm_reject[("work", "dist_to_match")] = osm_reject.apply(lambda rec: round(distance( (rec[("nominatim", "lat")], rec[("nominatim", "lon")]), (rec[("nominatim_match", "lat")], rec[("nominatim_match", "lon")])).km, 3), axis=1)
+    
+    return osm_reject.drop("nominatim_match", level=0, axis=1)
+    
+    
+    
+    
+    
+    
 def process_address(data, check_results=True,
                     osm_structured=False,
                     with_extra_house_number=True,
@@ -1115,7 +1147,9 @@ def process_address(data, check_results=True,
 
             if with_extra_house_number :
                 osm_results = add_extra_house_number(osm_results)
-
+            
+            all_reject = add_dist_to_match(osm_results, all_reject)
+            
             start_time = datetime.now()
             form_res =  multiindex_to_dict(osm_results)
 
@@ -1208,5 +1242,7 @@ def process_addresses(to_process_addresses, check_results=True,
 
     if with_extra_house_number and osm_addresses.shape[0] > 0:
         osm_addresses = add_extra_house_number(osm_addresses)
+        
+    rejected_addresses = add_dist_to_match(osm_addresses, rejected_addresses)
 
     return osm_addresses, rejected_addresses #{"match": format_res(osm_results), "rejected": format_res(all_reject)}
