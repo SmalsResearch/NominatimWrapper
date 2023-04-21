@@ -342,8 +342,8 @@ single_parser.add_argument('extraHouseNumber',
                            default=True,
                            help='If "true", will call libpostal on all addresses to get the house number')
 
-@namespace.route('/search')
-class Search(Resource):
+@namespace.route('/geocode')
+class Geocode(Resource):
     """ Single address geocoding"""
     @namespace.expect(single_parser)
     @namespace.response(400, 'Error in arguments')
@@ -354,7 +354,7 @@ class Search(Resource):
 
     def post(self):
         """
-        Geocode a single address.
+        Geocode (postal address cleansing and conversion into geographical coordinates) a single address.
         
         Cf GET version
         """
@@ -587,8 +587,8 @@ batch_parser.add_argument('extraHouseNumber',
                           help='if "true", will call libpostal on all addresses to get the house number')
 
 
-@namespace.route('/batch', methods=['POST'])
-class Batch(Resource):
+@namespace.route('/batchGeocode', methods=['POST'])
+class BatchGeocode(Resource):
     """Batch geocoding"""
 
     @namespace.expect(batch_parser)
@@ -599,7 +599,7 @@ class Batch(Resource):
 
     def post(self):
         """
-Geocode all addresses in csv like file.
+Geocode (postal address cleansing and conversion into geographical coordinates) all addresses in csv like file.
 
 Returns
 -------

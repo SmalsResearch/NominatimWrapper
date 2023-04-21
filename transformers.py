@@ -169,12 +169,12 @@ def process_photon(addr_df, addr_field):
 
     if photon_results.shape[0]>0:
         photon_results = addr_df[[addr_key_field, addr_field]].merge(photon_results)
-    else:
-        photon_results = addr_df[[addr_key_field, addr_field]].copy()
-        photon_results[photon_street_field]=pd.NA
-        photon_results[photon_postcode_field]=pd.NA
-        photon_results[photon_city_field]=pd.NA
-        photon_results[("photon", "photon_order")]=pd.NA
+    # else:
+        # photon_results = addr_df[[addr_key_field, addr_field]].copy()
+        # photon_results[photon_street_field]=pd.NA
+        # photon_results[photon_postcode_field]=pd.NA
+        # photon_results[photon_city_field]=pd.NA
+        # photon_results[("photon", "photon_order")]=pd.NA
 
     return photon_results
 
@@ -207,6 +207,11 @@ def photon_transformer(addresses, check_results):
 
     # Send to Photon
     photon_res = process_photon(photon_addr, ("photon", "full_addr_in"))
+    
+    if photon_res.shape[0] == 0:
+        return photon_res
+
+    
 
     if check_results : #and photon_check_results:
 
@@ -215,7 +220,12 @@ def photon_transformer(addresses, check_results):
         photon_res_sel = photon_res.merge(addresses[[addr_key_field, street_field,
                                                      housenbr_field, postcode_field,
                                                      city_field, country_field]])
-
+    vlog("photon_res: ")
+    vlog(photon_res)
+    
+    vlog("photon_res_sel: ")
+    vlog(photon_res_sel)
+    
     if photon_res_sel.shape[0] == 0:
         return photon_res_sel
 
@@ -225,9 +235,10 @@ def photon_transformer(addresses, check_results):
               (postcode_field, photon_postcode_field),
               (country_field, photon_country_field)]
 
-    fields_out    = [field_in      for field_in, field_photon in fields]
-    fields_photon = [field_photon  for field_in, field_photon in fields]
-
+    fields_out    = [field_in      for field_in, field_photon in fields if field_photon in  photon_res_sel]
+    fields_photon = [field_photon  for field_in, field_photon in fields if field_photon in  photon_res_sel]
+    
+    vlog(photon_res_sel)
     update_timestats("'t&p > transformer > photon", start_time)
     res= photon_res_sel[[addr_key_field] + fields_photon].rename(columns= {field_photon[1]: field_in[1] for field_in, field_photon in fields}).rename(columns= {"photon":"input"})[[addr_key_field] + fields_out]
 
