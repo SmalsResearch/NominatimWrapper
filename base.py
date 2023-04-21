@@ -71,7 +71,7 @@ def vlog(arg):
 
 
 
-def get_osm(addr, accept_language = ""):
+def get_osm(addr, accept_language = "", namedetails="1"):
     """
     Call OSM (Nominatim) webservice
 
@@ -93,7 +93,7 @@ def get_osm(addr, accept_language = ""):
                                     "format":"jsonv2",
                                     "accept-language":accept_language,
                                     "addressdetails":"1",
-                                    "namedetails" : "1",
+                                    "namedetails" :  namedetails, # 1 only usefull with check results
                                     "limit": "50"
                                     })
 
@@ -107,14 +107,14 @@ def get_osm(addr, accept_language = ""):
             return [ {field: item[field] for field in ["place_id", "lat", "lon",
                                                        "display_name", "address",
                                                        "namedetails", "place_rank",
-                                                       "category", "type"]} for item in res]
+                                                       "category", "type"] if field in item} for item in res]
     except Exception as exc:
         raise Exception (f"Cannot get OSM results ({osm_host}): {exc}") from exc
 
 
 
 
-def get_osm_struct(street, housenumber, postcode, city, country, accept_language = ""):
+def get_osm_struct(street, housenumber, postcode, city, country, accept_language = "", namedetails="1"):
     """
     Call OSM (Nominatim) webservice, using the structured version, splitting
     appart street (including building number), city, postalcode and country
@@ -148,8 +148,8 @@ def get_osm_struct(street, housenumber, postcode, city, country, accept_language
                                      "country": country,
                                     "format":"jsonv2",
                                     "accept-language":accept_language,
-                                    "addressdetails":"1",
-                                    "namedetails" : "1",
+                                    "addressdetails": "1", 
+                                    "namedetails" : namedetails,
                                     "limit": "50"
                                     })
 
@@ -167,7 +167,7 @@ def get_osm_struct(street, housenumber, postcode, city, country, accept_language
                                                        "namedetails",
                                                        "place_rank",
                                                        "category",
-                                                       "type"]} for item in res]
+                                                       "type"]if field in item} for item in res ]
     except Exception as exc:
         raise Exception (f"Cannot get OSM results ({osm_host}): {exc}") from exc
 

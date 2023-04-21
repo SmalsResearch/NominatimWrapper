@@ -20,7 +20,7 @@ Flask part of NominatimWrapper
 # - Full address en batch
 # - split/reorganise util.py
 # - according to 'mode', avoid to compute useless things
-# - distToMatch in non fast mode
+
 
 import os
 
@@ -233,6 +233,16 @@ log("Waiting for requests...")
 
 
 
+def convert_bool(value):
+    if isinstance(value, str):
+        if value.lower()=="false":
+            return False
+        if value.lower()=="true":
+            return True
+    return value
+        
+    
+    
 def get_arg(argname, def_val):
     """
     Get argument from request form. Sometimes get it from request.form,
@@ -251,38 +261,10 @@ def get_arg(argname, def_val):
         Argument value from request.
 
     """
+
     if argname in request.form:
-        return request.form[argname]
-    return request.args.get(argname, def_val)
-
-def get_yesno_arg(argname, def_val):
-    """
-    Convert boolean argument from 'yes' and 'no' to True and False.
-    If any other value, return None
-
-    Parameters
-    ----------
-    argname : str
-        Argument name.
-    def_val : str
-        Default value.
-
-    Returns
-    -------
-    boolean
-        True, False or None.
-
-    """
-
-    arg = get_arg(argname, def_val)
-    if arg.lower() == "yes":
-        return True
-    if arg.lower() == "no":
-        return False
-    return None
-
-
-
+        return convert_bool(request.form[argname])
+    return convert_bool(request.args.get(argname, def_val))
 
 
 app = Flask(__name__)
@@ -341,24 +323,24 @@ Selection of columns in the ouput :
 
 single_parser.add_argument('withRejected',
                            type=str,
-                           choices=('yes', 'no'),
-                           default='no',
-                           help='If "yes", rejected results are returned')
+                           choices=(True, False),
+                           default=False,
+                           help='If "true", rejected results are returned')
 single_parser.add_argument('checkResult',
                            type=str,
-                           choices=('yes', 'no'),
-                           default='no',
-                           help='If "yes", will "double check" OSM results')
+                           choices=(True, False),
+                           default=False,
+                           help='If "true", will "double check" OSM results')
 single_parser.add_argument('structOsm',
                            type=str,
-                           choices=('yes', 'no'),
-                           default='no',
-                           help='If "yes", will call the structured version of OSM')
+                           choices=(True, False),
+                           default=False,
+                           help='If "true", will call the structured version of OSM')
 single_parser.add_argument('extraHouseNumber',
                            type=str,
-                           choices=('yes', 'no'),
-                           default='yes',
-                           help='If "yes", will call libpostal on all addresses to get the house number')
+                           choices=(True, False),
+                           default=True,
+                           help='If "true", will call libpostal on all addresses to get the house number')
 
 @namespace.route('/search')
 class Search(Resource):
@@ -419,7 +401,7 @@ In 'long' mode, each record will contain the following blocs:
         - placeRank
         - displayName
         - all fields in the "address" bloc
-    - check:  Check results indicators (if checkResult='yes'):
+    - check:  Check results indicators (if checkResult='true'):
         - SIMStreetWhich
         - SIMStreet
         - SIMCity
@@ -461,30 +443,30 @@ In 'short' mode: idem as 'geo', plus full 'output' bloc
 
         vlog(f"used_fields: {used_fields}")
 
-        error_msg = "Invalid value for '%s'. Possible values are 'yes' or 'no'"
-        with_rejected = get_yesno_arg("withRejected", "no")
-        if with_rejected is None:
-            return [{"error": error_msg%('withRejected')}], 400
+        error_msg = "Invalid value for '%s'. Possible values are 'true' or 'false' (received '%s')"
+        with_rejected = get_arg("withRejected", False)
+        if not with_rejected in [True, False]:
+            return [{"error": error_msg%('withRejected', with_rejected)}], 400
 
-        check_results = get_yesno_arg("checkResult", "no")
-        if check_results is None:
-            return [{"error": error_msg%('checkResult')}], 400
+        check_results = get_arg("checkResult", False)
+        if not check_results in [True, False]:
+            return [{"error": error_msg%('checkResult', check_results)}], 400
 
-        osm_structured = get_yesno_arg("structOsm", "no")
-        if osm_structured is None:
-            return [{"error": error_msg%('structOsm')}], 400
+        osm_structured = get_arg("structOsm", False)
+        if not osm_structured in [True, False]:
+            return [{"error": error_msg%('structOsm', osm_structured)}], 400
 
-        with_extra_house_number =  get_yesno_arg("extraHouseNumber", "yes")
-        if with_extra_house_number is None:
-            return [{"error": error_msg%('extraHouseNumber')}], 400
+        with_extra_house_number =  get_arg("extraHouseNumber", True)
+        if not with_extra_house_number in [True, False]:
+            return [{"error": error_msg%('extraHouseNumber', with_extra_house_number)}], 400
 
         if address != "":
             if len(used_fields)>0:
                 return [{"error": "Field 'fullAddress' cannot be used together with fields "+";".join(used_fields)}],  400
             if osm_structured :
-                return [{"error": "Field 'fullAddress' cannot be used together with fields 'structOsm=yes'"}],   400
+                return [{"error": "Field 'fullAddress' cannot be used together with fields 'structOsm=true'"}],   400
             if check_results :
-                return [{"error": "Field 'fullAddress' cannot be used together with fields 'checkResult=yes'"}], 400
+                return [{"error": "Field 'fullAddress' cannot be used together with fields 'checkResult=true'"}], 400
 
             data[street_field] = address
 
@@ -504,7 +486,9 @@ In 'short' mode: idem as 'geo', plus full 'output' bloc
                               osm_structured=osm_structured,
                               with_extra_house_number= with_extra_house_number,
                               fastmode=fastmode,
-                              transformers_sequence=transformers_sequence)
+                              transformers_sequence=transformers_sequence,
+                              with_rejected=with_rejected
+                             )
 
 
         log(f"Result: {res}")
@@ -582,25 +566,25 @@ Selection of columns in the ouput :
 
 batch_parser.add_argument('withRejected',
                           type=str,
-                          choices=('yes', 'no'),
-                          default='no',
-                          help='if "yes", rejected results are returned')
+                          choices=(True, False),
+                          default=False,
+                          help='if "true", rejected results are returned')
 
 batch_parser.add_argument('checkResult',
                           type=str,
-                          choices=('yes', 'no'),
-                          default='no',
-                          help='if "yes", will "double check" OSM results')
+                          choices=(True, False),
+                          default=False,
+                          help='if "true", will "double check" OSM results')
 batch_parser.add_argument('structOsm',
                           type=str,
-                          choices=('yes', 'no'),
-                          default='no',
-                          help='if "yes", will call the structured version of OSM')
+                          choices=(True, False),
+                          default=False,
+                          help='if "true", will call the structured version of OSM')
 batch_parser.add_argument('extraHouseNumber',
                           type=str,
-                          choices=('yes', 'no'),
-                          default='yes',
-                          help='if "yes", will call libpostal on all addresses to get the house number')
+                          choices=(True, False),
+                          default=True,
+                          help='if "true", will call libpostal on all addresses to get the house number')
 
 
 @namespace.route('/batch', methods=['POST'])
@@ -644,7 +628,7 @@ In 'long' mode, each record will contain the following blocs:
     - placeRank
     - displayName
     - all fields in the "address" bloc
-- check:  Check results indicators (if checkResult='yes'):
+- check:  Check results indicators (if checkResult='true'):
     - SIMStreetWhich
     - SIMStreet
     - SIMCity
@@ -656,35 +640,34 @@ In 'geo' mode: only 'lat', 'lon', and 'placeRank' values from 'nominatim', 'addr
 In 'short' mode: idem as 'geo', plus full 'output' bloc
 
 
-If "withRejected=yes", an additional field 'rejected' with all rejected records is added, with the same field selection as above, according to "mode", plus one additional fields, 'rejectReason'. Equal to:
-- 'mismatch' if 'checkResult=yes', and this result is "too far away" from the original value
+If "withRejected=true", an additional field 'rejected' with all rejected records is added, with the same field selection as above, according to "mode", plus one additional fields, 'rejectReason'. Equal to:
+- 'mismatch' if 'checkResult=true', and this result is "too far away" from the original value
 - 'tail' if it was just not the first record.
 
 
         """
         log("batch")
 
-
         mode = get_arg("mode", "short")
         if not mode in ["geo", "short", "long"]:
             return [{"error": f"Invalid mode {mode}"}], 400
 
-        error_msg = "Invalid value for '%s'. Possible values are 'yes' or 'no'"
-        with_rejected = get_yesno_arg("withRejected", "no")
-        if with_rejected is None:
-            return [{"error": error_msg%('withRejected')}], 400
+        error_msg = "Invalid value for '%s'. Possible values are 'true' or 'false' (received '%s')"
+        with_rejected = get_arg("withRejected", False)
+        if not with_rejected in [True, False]:
+            return [{"error": error_msg%('withRejected', with_rejected)}], 400
 
-        check_results = get_yesno_arg("checkResult", "no")
-        if check_results is None:
-            return [{"error": error_msg%('checkResult')}], 400
+        check_results = get_arg("checkResult", False)
+        if not check_results in [True, False]:
+            return [{"error": error_msg%('checkResult', check_results)}], 400
 
-        osm_structured = get_yesno_arg("structOsm", "no")
-        if osm_structured is None:
-            return [{"error": error_msg%('structOsm')}], 400
+        osm_structured = get_arg("structOsm", False)
+        if not osm_structured in [True, False]:
+            return [{"error": error_msg%('structOsm', osm_structured)}], 400
 
-        with_extra_house_number =  get_yesno_arg("extraHouseNumber", "yes")
-        if with_extra_house_number is None:
-            return [{"error": error_msg%('extraHouseNumber')}], 400
+        with_extra_house_number =  get_arg("extraHouseNumber", True)
+        if not with_extra_house_number in [True, False]:
+            return [{"error": error_msg%('extraHouseNumber', with_extra_house_number)}], 400
 
         if len(list(request.files.keys()))==0:
             return [{"error": "No file data was provided"}], 400
@@ -723,7 +706,8 @@ If "withRejected=yes", an additional field 'rejected' with all rejected records 
                                                     check_results=check_results,
                                                     osm_structured=osm_structured,
                                                     with_extra_house_number= with_extra_house_number and mode != "geo",
-                                                    transformers_sequence=transformers_sequence)
+                                                    transformers_sequence=transformers_sequence,
+                                                    with_rejected=with_rejected)
 
 
         if isinstance(res, dict) :
@@ -736,14 +720,13 @@ If "withRejected=yes", an additional field 'rejected' with all rejected records 
 
         res = res.reset_index(drop=True)
 
-
+        log("res:")
+        log(res)
         for field, f_type in [("place_id", int), ("place_rank", int), ("lat", float), ("lon", float)]:
             res[("nominatim", field)] = res[("nominatim", field)].astype(f_type)
             if ("nominatim", field) in rejected_addresses:
                 rejected_addresses[("nominatim", field)] = rejected_addresses[("nominatim", field)].astype(f_type)
-
         try:
-
             if mode == "geo":
                 fields= [addr_key_field, ("nominatim", "lat"), ("nominatim", "lon"), ("nominatim", "place_rank"), ("work", "method"), ("work", "reject_reason")]
                 res = res[[ f for f in fields if f in res ] ]

@@ -361,7 +361,7 @@ def process_osm(df, osm_addr_field, accept_language="",
 
     osm_res_field = ("nominatim", "result")
 
-    to_process[("work", "accept_language")] = accept_language
+    #to_process[("work", "accept_language")] = accept_language
 
     if osm_structured:
         to_process[osm_res_field] = to_process.apply(lambda row:
@@ -370,9 +370,14 @@ def process_osm(df, osm_addr_field, accept_language="",
                                                                   postcode=   row[postcode_field],
                                                                   city=       row[city_field],
                                                                   country=    row[country_field],
-                                                                  accept_language = row[("work", "accept_language")]), axis=1)
+                                                                  accept_language = accept_language,
+                                                                 namedetails='1' if check_results else '0'
+                                                                 ), axis=1)
     else:
-        to_process[osm_res_field] = to_process[[osm_addr_field, ("work", "accept_language")]].apply(lambda row: get_osm(row[osm_addr_field], row[("work","accept_language")]), axis=1)
+        to_process[osm_res_field] = to_process[[osm_addr_field]].apply(lambda row: get_osm(row[osm_addr_field], 
+                                                                                                                        accept_language=accept_language,
+                                                                                                                        namedetails='1' if check_results else '0'
+                                                                                                                       ), axis=1)
 
     update_timestats("t&p > process > osm", start_time)
 
@@ -512,7 +517,8 @@ def osm_parse_and_split(df, osm_res_field,
     # log(osm_results)
 
     # Keep only "namedetails" if category == "highway"
-    osm_results[("nominatim", "namedetails")] = np.where(osm_results[("nominatim", "category")] == "highway", osm_results[("nominatim", "namedetails")].apply(lambda dct: " - ".join(dct.values())), "")
+    if "namedetails" in osm_results["nominatim"]: 
+        osm_results[("nominatim", "namedetails")] = np.where(osm_results[("nominatim", "category")] == "highway", osm_results[("nominatim", "namedetails")].apply(lambda dct: " - ".join(dct.values())), "")
 
     osm_results = osm_results.drop(columns=[("nominatim", "address")] + ([osm_result_item_field] if drop_osm else []))
 
@@ -943,7 +949,8 @@ def format_osm_addr(osm_rec):
 
 def process_address_fast(data, osm_structured=False,
                          with_extra_house_number=True,
-                         retry_with_low_rank=True):
+                         retry_with_low_rank=True, 
+                         with_rejected=True):
     """
     Fast method, allowing to bypass all transformers/bypass procedure
 
@@ -982,7 +989,7 @@ def process_address_fast(data, osm_structured=False,
                                    )
         else:
 
-            osm_res = get_osm(addr_in)
+            osm_res = get_osm(addr_in, namedetails=0)
     except Exception as exc:
         log(f"Error during Nominatim call : {exc}")
         vlog(traceback.format_exc())
@@ -1035,13 +1042,13 @@ def process_address_fast(data, osm_structured=False,
 
         res = {"match":  [match],
                "rejected": []}
+        if with_rejected:
+            for osm_rec in osm_res[1:]:
+                rec = format_osm_addr(osm_rec)
+                rec["work"]["reject_reason"]= "tail"
+                rec["work"]["dist_to_match"] = round(distance( (rec["nominatim"]["lat"], rec["nominatim"]["lon"]), (match["nominatim"]["lat"], match["nominatim"]["lon"])).km, 3)
 
-        for osm_rec in osm_res[1:]:
-            rec = format_osm_addr(osm_rec)
-            rec["work"]["reject_reason"]= "tail"
-            rec["work"]["dist_to_match"] = round(distance( (rec["nominatim"]["lat"], rec["nominatim"]["lon"]), (match["nominatim"]["lat"], match["nominatim"]["lon"])).km, 3)
-
-            res["rejected"].append(rec)
+                res["rejected"].append(rec)
 
         update_timestats("fast > format", start_time2)
         update_timestats("fast", start_time)
@@ -1076,7 +1083,8 @@ def process_address(data, check_results=True,
                     osm_structured=False,
                     with_extra_house_number=True,
                     fastmode=True,
-                    transformers_sequence=None):
+                    transformers_sequence=None,
+                    with_rejected=True):
     """
     Main logical for single address
 
@@ -1110,7 +1118,7 @@ def process_address(data, check_results=True,
 
     if fastmode and not check_results:
         vlog("Try fast mode")
-        res = process_address_fast(data, osm_structured=osm_structured, with_extra_house_number=with_extra_house_number)
+        res = process_address_fast(data, osm_structured=osm_structured, with_extra_house_number=with_extra_house_number, with_rejected=with_rejected)
         if res:
             return res
         vlog("No result in fast mode, go to full batch mode")
@@ -1134,9 +1142,10 @@ def process_address(data, check_results=True,
             log(f"Error during processing : {exc}")
             vlog(traceback.format_exc())
             return {"error": str(exc)}
-
-        all_reject = pd.concat([all_reject, rejected], sort=False)
-        all_reject.columns = pd.MultiIndex.from_tuples(all_reject.columns, names=["L0", "L1"])
+        
+        if with_rejected:
+            all_reject = pd.concat([all_reject, rejected], sort=False)
+            all_reject.columns = pd.MultiIndex.from_tuples(all_reject.columns, names=["L0", "L1"])
 
         vlog(step_stats)
         if osm_results.shape[0] > 0:
@@ -1148,13 +1157,16 @@ def process_address(data, check_results=True,
             if with_extra_house_number :
                 osm_results = add_extra_house_number(osm_results)
             
-            all_reject = add_dist_to_match(osm_results, all_reject)
+            
             
             start_time = datetime.now()
             form_res =  multiindex_to_dict(osm_results)
 
-
-            form_rej = multiindex_to_dict(all_reject)
+            if with_rejected: 
+                all_reject = add_dist_to_match(osm_results, all_reject)
+                form_rej = multiindex_to_dict(all_reject)
+            else:
+                form_rej=[]
             #update_timestats("format_res", start_time)
 
             return {"match": form_res, "rejected": form_rej }
@@ -1165,7 +1177,8 @@ def process_address(data, check_results=True,
 def process_addresses(to_process_addresses, check_results=True,
                       osm_structured=False,
                       with_extra_house_number=True,
-                      transformers_sequence=None
+                      transformers_sequence=None,
+                      with_rejected=True
                       ):
     """
     Main logical for batch addresses
@@ -1216,7 +1229,7 @@ def process_addresses(to_process_addresses, check_results=True,
             vlog("osm addresses: ")
             vlog(osm_addresses)
 
-            if rejected.shape[0]>0:
+            if rejected.shape[0]>0 and with_rejected:
                 rejected_addresses = pd.concat([rejected_addresses, rejected], sort=False).drop_duplicates()
                 rejected_addresses.columns=     rejected_addresses.columns.set_names(["L0","L1"])
 
@@ -1243,6 +1256,7 @@ def process_addresses(to_process_addresses, check_results=True,
     if with_extra_house_number and osm_addresses.shape[0] > 0:
         osm_addresses = add_extra_house_number(osm_addresses)
         
-    rejected_addresses = add_dist_to_match(osm_addresses, rejected_addresses)
+    if with_rejected: 
+        rejected_addresses = add_dist_to_match(osm_addresses, rejected_addresses)
 
     return osm_addresses, rejected_addresses #{"match": format_res(osm_results), "rejected": format_res(all_reject)}
