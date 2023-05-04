@@ -539,6 +539,12 @@ def ignore_mismatch_keep_bests(addr_matches,
 
     distances[("check","SIM_zip")] =       postcode_compare(addr_matches[postcode_field_a].fillna(""), addr_matches[postcode_field_b].fillna(""))
 
+    log(city_field_a)
+    log(addr_matches)
+    log(addr_matches[city_field_a])
+    log(city_field_b)
+    log(addr_matches[city_field_b])
+    
     distances[("check","SIM_city")] =      city_compare(addr_matches[city_field_a].fillna(""), addr_matches[city_field_b].fillna(""))
 
     elimination_rule = ((distances[("check","SIM_zip")] < 0.1) & (distances[("check","SIM_city")] < similarity_threshold)) |                         ((distances[("check","SIM_street")] < similarity_threshold)  )
@@ -635,7 +641,7 @@ def match_parent(osm_results, osm_reject):
                                       street_fields_a = [("nominatim", "alt_names")],
                                       housenbr_field_a = ("output", "house_number"),
                                       postcode_field_a = ("output","post_code"),
-                                      city_field_a = ("output","city"),
+                                      city_field_a = ("output","post_name"),
                                       street_field_b = street_field,
                                       housenbr_field_b = housenbr_field,
                                       postcode_field_b = postcode_field,
@@ -700,7 +706,7 @@ def osm_keep_relevant_results(osm_results, addresses, max_res=1):
                                       street_fields_a = [("output", "street_name"),("output", "other"), ("nominatim","namedetails")],
                                       housenbr_field_a = ("output", "house_number"),
                                       postcode_field_a = ("output","post_code"),
-                                      city_field_a = ("output","city"),
+                                      city_field_a = ("output","post_name"),
                                       street_field_b = street_field,
                                       housenbr_field_b = housenbr_field,
                                       postcode_field_b = postcode_field,

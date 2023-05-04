@@ -62,7 +62,7 @@ else :
 street_field  =  ("input", "streetName")
 housenbr_field = ("input", "houseNumber")
 postcode_field = ("input", "postCode")
-city_field  =    ("input", "city")
+city_field  =    ("input", "postName")
 country_field =  ("input", "country")
 addr_key_field = ("input", "addrKey")
 
@@ -115,7 +115,7 @@ default_transformers_sequence = [ ["orig"],
 collapse_params = {
     ("output", "street_name"):     ["road", "pedestrian","footway", "cycleway",
                           "path", "address27", "construction", "hamlet", "park"],
-    ("output", "city")  :   ["town", "village", "city_district", "county", "city"],
+    ("output", "post_name")  :   ["town", "village", "city_district", "county", "city"],
     ("output", "house_number"):    ["house_number"],
     ("output", "country"):         ["country"],
     ("output", "post_code"):       ["postcode"],

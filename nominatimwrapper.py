@@ -307,7 +307,7 @@ if with_https=="YES":
 single_parser = reqparse.RequestParser()
 single_parser.add_argument('streetName',      type=str, help='Street name')
 single_parser.add_argument('houseNumber', type=str, help='House number')
-single_parser.add_argument('city',        type=str, help='City name')
+single_parser.add_argument('postName',    type=str, help='Postal name (city)')
 single_parser.add_argument('postCode',    type=str, help='Postal code')
 single_parser.add_argument('country',     type=str, help='Country name')
 single_parser.add_argument('addrKey',     type=str, help='Address key (optional, simply copied in output)')
@@ -321,7 +321,7 @@ single_parser.add_argument('mode',
 Selection of columns in the ouput :
 
 - geo: only return lat/long
-- short: return lat/long, cleansed address (street, number, zipcode, city, country)
+- short: return lat/long, cleansed address (street, number, postcode, city, country)
 - long: return all results from Nominatim""")
 
 
@@ -368,12 +368,12 @@ Returns a dictionary with 2 parts. Depending of parameter "mode", various fields
 In 'long' mode, each record will contain the following blocs:
 
 - match: a single result, with the following blocs:
-    - input : all columns present in input data, but at least "addrKey" (if provided), "streetName", "houseNumber", "postCode", "city", "country"
+    - input : all columns present in input data, but at least "addrKey" (if provided), "streetName", "houseNumber", "postCode", "postName", "country"
     - output: consolidated result of geocoding :
         - streetName: first non null value in ["road", "pedestrian","footway", "cycleway", "path", "address27", "construction", "hamlet", "park"]
         - houseNumber: house_number
         - postCode: postcode
-        - city: first non null value in ["town", "village", "city_district", "county", "city"],
+        - postName: first non null value in ["town", "village", "city_district", "county", "city"],
         - country: country
         - other: concatenate all values which were not picked by one of the above item
         - inHouseNumber: equivalent to input->houseNumber
@@ -407,6 +407,7 @@ In 'short' mode: idem as 'geo', plus full 'output' bloc
 
         """
 
+        log("geocode")
         start_time = datetime.now()
 
         for k in timestats:
@@ -538,7 +539,7 @@ A CSV file with the following columns:
 - streetName
 - houseNumber
 - postCode
-- city
+- postName
 - country
 - addrKey (must be unique)""")
 
@@ -550,7 +551,7 @@ batch_parser.add_argument('mode',
 Selection of columns in the ouput :
 
 - geo: only return lat/long
-- short: return lat/long, cleansed address (street, number, zipcode, city, country)
+- short: return lat/long, cleansed address (street, number, zipcode, postname, country)
 - long: return all results from Nominatim""")
 
 batch_parser.add_argument('withRejected',
@@ -595,12 +596,12 @@ Returns
 A json dictionary of the shape {'match': [<list of dictionaries>]} containing geocoded addresses. Depending of parameter "mode", following fields could be found:
 In 'long' mode, each record will contain the following blocs:
 
-- input : all columns present in input data, but at least "addrKey", "streetName", "houseNumber", "postCode", "city", "country"
+- input : all columns present in input data, but at least "addrKey", "streetName", "houseNumber", "postCode", "postName", "country"
 - output: consolidated result of geocoding :
     - streetName: first non null value in ["road", "pedestrian","footway", "cycleway", "path", "address27", "construction", "hamlet", "park"]
     - houseNumber: house_number
     - postCode: postcode
-    - city: first non null value in ["town", "village", "city_district", "county", "city"],
+    - postName: first non null value in ["town", "village", "city_district", "county", "city"],
     - country: country
     - other: concatenate all values which were not picked by one of the above item
     - inHouseNumber: equivalent to input->houseNumber
@@ -712,7 +713,8 @@ If "withRejected=true", an additional field 'rejected' with all rejected records
         log("res:")
         log(res)
         for field, f_type in [("place_id", int), ("place_rank", int), ("lat", float), ("lon", float)]:
-            res[("nominatim", field)] = res[("nominatim", field)].astype(f_type)
+            if ("nominatim", field) in res:
+                res[("nominatim", field)] = res[("nominatim", field)].astype(f_type)
             if ("nominatim", field) in rejected_addresses:
                 rejected_addresses[("nominatim", field)] = rejected_addresses[("nominatim", field)].astype(f_type)
         try:
