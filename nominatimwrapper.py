@@ -271,13 +271,16 @@ app = Flask(__name__)
 api = Api(app,
           version='0.1',
           title='NominatimWrapper API',
-          description="""A service that allows geocoding (postal address cleansing and conversion into geographical coordinates), based on Nominatim (OpenStreetMap),
+          description="""A service that allows geocoding (postal address cleansing and conversion into geographical coordinates), based on Nominatim (OpenStreetMap).
           
           Source available on: https://github.com/SmalsResearch/NominatimWrapper/
 
           """,
           doc='/doc',
-          prefix='/REST/nominatimWrapper/v0.1'
+          prefix='/REST/nominatimWrapper/v0.1',
+          contact='Vandy BERTEN',
+          contact_email='vandy.berten@smals.be',
+          contact_url='https://www.smalsresearch.be/author/berten/'
 )
 
 namespace = api.namespace(
