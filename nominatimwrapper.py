@@ -276,6 +276,7 @@ api = Api(app,
           Source available on: https://github.com/SmalsResearch/NominatimWrapper/
 
           """,
+          external_docs={"description": "ext docs", "url": "https://github.com/SmalsResearch/NominatimWrapper/"}, # does not work
           doc='/doc',
           prefix='/REST/nominatimWrapper/v0.1',
           contact='Vandy BERTEN',
@@ -359,22 +360,7 @@ class Geocode(Resource):
         """
         Geocode (postal address cleansing and conversion into geographical coordinates) a single address.
         
-        Cf GET version
-        """
-        return self.get()
-
-    @namespace.expect(single_parser)
-    @namespace.response(400, 'Error in arguments')
-    @namespace.response(500, 'Internal Server error')
-    @namespace.response(200, 'Found a match for this address (or some rejected addresses)')
-    @namespace.response(204, 'No address found, even rejected')
-
-
-
-    def get(self):
-        """
-Geocode a single address.
-
+        
 Returns
 -------
 Returns a dictionary with 2 parts. Depending of parameter "mode", various fields could be found.
