@@ -92,20 +92,47 @@ Then,
 ## REST API
 
 Single call:
-`curl -X POST  "[docker ip]:5000/geocode/?street=chaussee+de+tervuren&city=Auderghem&postCode=1160"`
+`curl -X 'POST' \
+  'https://[docker ip]:5000/REST/nominatimWrapper/v1.0/geocode?mode=short&withRejected=false&checkResult=false&structOsm=false&extraHouseNumber=true' \
+  -H 'accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -d '{
+  "address": {
+    "addrKey": "1",
+    "streetName": "Avenue Fonsny",
+    "houseNumber": "20",
+    "postCode": "1160",
+    "postName": "Bruxelles",
+    "countryName": "Belgium"
+  }
+}'`
 
 
 Batch call:
-`curl -F media=@addresses.csv "http://[docker ip]:5000/batchGeocode/" -F mode=short`
+`curl -X 'POST' \
+  'https://[docker ip]:5000/REST/nominatimWrapper/v1.0/batchGeocode?mode=short&withRejected=false&checkResult=false&structOsm=false&extraHouseNumber=true' \
+  -H 'accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -d '{
+  "addresses": [
+    {
+      "addrKey": "1",
+      "streetName": "Avenue Fonsny",
+      "houseNumber": "20",
+      "postCode": "1160",
+      "postName": "Bruxelles",
+      "countryName": "Belgium"
+    }, {
+      "addrKey": "2",
+      "streetName": "Rue de la loi",
+      "houseNumber": "16",
+      "postCode": "1000",
+      "postName": "Bruxelles",
+      "countryName": "Belgium"
+    }
 
-Assuming "addresses.csv" has the following header:
-"addrKey","country","postCode","city","street","houseNumber"
-
-Other columns are allowed, but will just be ignored (but return in the result if mode=long)
-
-To pretty print output: 
-
-`curl -F media=@address_sample100.csv "http://127.0.0.1:5000/batchGeocode/" -F mode=short | python -m json.tool`
+  ]
+}'`
 
 Full documentation is provide in the swagger file. Once the server is up&running, swagger UI is available on http://[docker ip]:5000/doc 
 

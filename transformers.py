@@ -207,11 +207,11 @@ def photon_transformer(addresses, check_results):
 
     # Send to Photon
     photon_res = process_photon(photon_addr, ("photon", "full_addr_in"))
-    
+
     if photon_res.shape[0] == 0:
         return photon_res
 
-    
+
 
     if check_results : #and photon_check_results:
 
@@ -222,10 +222,10 @@ def photon_transformer(addresses, check_results):
                                                      city_field, country_field]])
     vlog("photon_res: ")
     vlog(photon_res)
-    
+
     vlog("photon_res_sel: ")
     vlog(photon_res_sel)
-    
+
     if photon_res_sel.shape[0] == 0:
         return photon_res_sel
 
@@ -237,7 +237,7 @@ def photon_transformer(addresses, check_results):
 
     fields_out    = [field_in      for field_in, field_photon in fields if field_photon in  photon_res_sel]
     fields_photon = [field_photon  for field_in, field_photon in fields if field_photon in  photon_res_sel]
-    
+
     vlog(photon_res_sel)
     update_timestats("'t&p > transformer > photon", start_time)
     res= photon_res_sel[[addr_key_field] + fields_photon].rename(columns= {field_photon[1]: field_in[1] for field_in, field_photon in fields}).rename(columns= {"photon":"input"})[[addr_key_field] + fields_out]

@@ -95,7 +95,7 @@ def to_camel_case(data):
 
 
     if isinstance(data, str):
-        return re.sub(r"(_)([a-z])", lambda m: m.group(2).upper(),  data)
+        return re.sub(r"(_)([a-z0-9])", lambda m: m.group(2).upper(),  data)
     if isinstance(data, dict):
         return { to_camel_case(key): to_camel_case(item) if isinstance(item, (dict, list)) else item for key, item in data.items()}
     if isinstance(data, list):
@@ -254,7 +254,8 @@ def retry_with_low_place_rank(osm_results, sent_addresses,
 
     start_time = datetime.now()
     vlog("Trying to improve place_rank with place_rank < 30 by cleansed house number ")
-    sent_addresses_26 = osm_results[osm_results[("nominatim", "place_rank")] < 30]
+    vlog(osm_results)
+    sent_addresses_26 = osm_results[osm_results[("metadata", "place_rank")] < 30]
 
     if sent_addresses_26.shape[0]>0:
         sent_addresses_26 = sent_addresses_26.merge(sent_addresses)#[osm_addresses.place_rank == 26]
@@ -276,7 +277,7 @@ def retry_with_low_place_rank(osm_results, sent_addresses,
 
 
 
-        vlog(" ; ".join([f"rank {r}: {c}" for r, c in sent_addresses_26[("nominatim", "place_rank")].value_counts().items()]))
+        vlog(" ; ".join([f"rank {r}: {c}" for r, c in sent_addresses_26[("metadata", "place_rank")].value_counts().items()]))
         #print(osm_results_26.place_rank.value_counts())
         osm_results_26, _ = process_osm(sent_addresses_26,
                                                   osm_addr_field=transformed_address_field,
@@ -284,11 +285,11 @@ def retry_with_low_place_rank(osm_results, sent_addresses,
                                                   osm_structured=osm_structured)
 
         if osm_results_26.shape[0]>0:
-            pr_str=" ; ".join([f"rank {r}: {c}" for r, c in osm_results_26[("nominatim", "place_rank")].value_counts().items()])
+            pr_str=" ; ".join([f"rank {r}: {c}" for r, c in osm_results_26[("metadata", "place_rank")].value_counts().items()])
             vlog(f"     - New results with place_rank == 30 after cleansing ({pr_str}):")
 
-            osm_results_26 = osm_results_26[osm_results_26[("nominatim", "place_rank")] == 30]
-            osm_results_26[("work", "retry_on_26")] = True
+            osm_results_26 = osm_results_26[osm_results_26[("metadata", "place_rank")] == 30]
+            osm_results_26[("metadata", "retry_on_26")] = True
 
             osm_results = pd.concat([osm_results[~osm_results[addr_key_field].isin(osm_results_26[addr_key_field])],
                                      osm_results_26], sort=False)
@@ -346,7 +347,7 @@ def process_osm(df, osm_addr_field, accept_language="",
 
     if df.shape[0] == 0:
         return pd.DataFrame(columns=[osm_addr_field, addr_key_field]), \
-                pd.DataFrame(columns=[osm_addr_field, addr_key_field, ("work", "reject_reason")])
+                pd.DataFrame(columns=[osm_addr_field, addr_key_field, ("metadata", "reject_reason")])
 
     if osm_structured:
         to_process = df[[osm_addr_field, addr_key_field, street_field, housenbr_field,
@@ -361,7 +362,6 @@ def process_osm(df, osm_addr_field, accept_language="",
 
     osm_res_field = ("nominatim", "result")
 
-    #to_process[("work", "accept_language")] = accept_language
 
     if osm_structured:
         to_process[osm_res_field] = to_process.apply(lambda row:
@@ -374,7 +374,7 @@ def process_osm(df, osm_addr_field, accept_language="",
                                                                  namedetails='1' if check_results else '0'
                                                                  ), axis=1)
     else:
-        to_process[osm_res_field] = to_process[[osm_addr_field]].apply(lambda row: get_osm(row[osm_addr_field], 
+        to_process[osm_res_field] = to_process[[osm_addr_field]].apply(lambda row: get_osm(row[osm_addr_field],
                                                                                                                         accept_language=accept_language,
                                                                                                                         namedetails='1' if check_results else '0'
                                                                                                                        ), axis=1)
@@ -393,6 +393,8 @@ def process_osm(df, osm_addr_field, accept_language="",
 
     osm_results = df[[osm_addr_field, addr_key_field]].merge(osm_results)
 
+    osm_results[("metadata", addr_key_field[1])] = osm_results[addr_key_field]
+
     vlog(f"     - OSM got {osm_results.shape[0]} results for {osm_results[addr_key_field].nunique()} addresses")
     vlog(osm_results)
 
@@ -400,7 +402,7 @@ def process_osm(df, osm_addr_field, accept_language="",
 
     if osm_results.shape[0] == 0:
 
-        return osm_results, pd.DataFrame(columns=[osm_addr_field, addr_key_field, ("work", "reject_reason")])
+        return osm_results, pd.DataFrame(columns=[osm_addr_field, addr_key_field, ("metadata", "reject_reason")])
 
     if check_results:
 
@@ -427,19 +429,10 @@ def process_osm(df, osm_addr_field, accept_language="",
         result_head = osm_results.groupby([addr_key_field]).head(1).copy()
 
         osm_reject = osm_results[~osm_results.index.isin(result_head.index)].copy()
-        
-#         log("head:")
-#         log(result_head)
-#         log("rejected: ")
-#         log(osm_reject)
-        
-#         osm_reject = osm_reject.merge(result_head[[addr_key_field, ("nominatim", "lat"), ("nominatim", "lon")]].rename(columns={"nominatim": "nominatim_match"}))
-#         log(osm_reject)
-        
-        osm_reject[("work", "reject_reason")] = "tail"
-        #osm_reject[("work", "dist_to_match")] = osm_reject.apply(lambda rec: round(distance( (rec[("nominatim", "lat")], rec[("nominatim", "lon")]), (rec[("nominatim_match", "lat")], rec[("nominatim_match", "lon")])).km, 3), axis=1)
-        
-        
+
+
+        osm_reject[("metadata", "reject_reason")] = "tail"
+
         osm_results = result_head
 
     vlog("     - Done!")
@@ -517,7 +510,7 @@ def osm_parse_and_split(df, osm_res_field,
     # log(osm_results)
 
     # Keep only "namedetails" if category == "highway"
-    if "namedetails" in osm_results["nominatim"]: 
+    if "namedetails" in osm_results["nominatim"]:
         osm_results[("nominatim", "namedetails")] = np.where(osm_results[("nominatim", "category")] == "highway", osm_results[("nominatim", "namedetails")].apply(lambda dct: " - ".join(dct.values())), "")
 
     osm_results = osm_results.drop(columns=[("nominatim", "address")] + ([osm_result_item_field] if drop_osm else []))
@@ -533,7 +526,11 @@ def osm_parse_and_split(df, osm_res_field,
     osm_results = add_addr_out_columns(osm_results,addr_items)
 
     osm_results = osm_results.reset_index()
-    osm_results[("work", "osm_order")] = osm_results["level_1"]
+    osm_results[("metadata", "osm_order")] = osm_results["level_1"]
+
+    osm_results[("metadata", "place_rank")] = osm_results[("nominatim", "place_rank")]
+    osm_results[("metadata", "place_id")] = osm_results[("nominatim", "place_id")]
+
 
     osm_results = osm_results.drop("level_1", level=0, axis=1)
 
@@ -563,6 +560,7 @@ def add_addr_out_columns(osm_results, addr_items):
 
     """
 
+
     for out_column, in_columns in collapse_params.items():
         osm_results[out_column] = collapse(osm_results, [("nominatim", col) for col in in_columns], "fillna")
 
@@ -575,6 +573,9 @@ def add_addr_out_columns(osm_results, addr_items):
 
     osm_results[("output","other")] = osm_results[("output","other")].apply(lambda lst: [x for x in lst if not pd.isnull(x)]).apply(" - ".join)
 
+    for fld in ["display_name", "lat","lon"]:
+        if ("nominatim",fld) in osm_results:
+            osm_results[("output", fld)] = osm_results[("nominatim", fld)]
     return osm_results
 
 
@@ -623,7 +624,7 @@ def transform_and_process(to_process_addresses, transformers,
         vlog("No more addresses!")
         step_stats = {"method": method, "todo":  0, "sent": 0, "match": 0, "match_26": 0,
                       "reject_rec" :0, "reject_addr": 0, "reject_mism": 0}
-        return pd.DataFrame(columns=[addr_key_field]), pd.DataFrame(columns=[addr_key_field, ("work", "reject_reason")]), step_stats
+        return pd.DataFrame(columns=[addr_key_field]), pd.DataFrame(columns=[addr_key_field, ("metadata", "reject_reason")]), step_stats
 
 
     transformed_addresses = apply_transformers(to_process_addresses, transformers,
@@ -633,7 +634,7 @@ def transform_and_process(to_process_addresses, transformers,
     if transformed_addresses.shape[0]==0:
         vlog("No more addresses for this transformers sequence!")
         step_stats = {"method": method, "todo":  0, "sent": 0, "match": 0, "match_26": 0, "reject_rec" :0, "reject_addr": 0, "reject_mism": 0}
-        return pd.DataFrame(columns=[addr_key_field]), pd.DataFrame(columns=[addr_key_field, ("work", "reject_reason")]), step_stats
+        return pd.DataFrame(columns=[addr_key_field]), pd.DataFrame(columns=[addr_key_field, ("metadata", "reject_reason")]), step_stats
 
     transformed_addresses[transformed_address_field] =   transformed_addresses[street_field].fillna("") + ", "+\
                                              transformed_addresses[housenbr_field].fillna("") + ", "+\
@@ -669,8 +670,8 @@ def transform_and_process(to_process_addresses, transformers,
                                                 check_results=check_results)
 
     update_timestats("t&p > process", start_time)
-    osm_results[("work", "method")] = method
-    rejected[("work", "method")] = method
+    osm_results[("metadata", "method")] = method
+    rejected[("metadata", "method")] = method
 
     #log(rejected)
 
@@ -678,10 +679,10 @@ def transform_and_process(to_process_addresses, transformers,
       "todo":        to_process_addresses.shape[0],
       "sent":        sent_addresses.shape[0],
       "match":       osm_results.shape[0],
-      "match_26":    osm_results[("work", "retry_on_26")].sum() if ("work", "retry_on_26") in osm_results else 0,
+      "match_26":    osm_results[("metadata", "retry_on_26")].sum() if ("metadata", "retry_on_26") in osm_results else 0,
       "reject_rec" : rejected.shape[0],
       "reject_addr": rejected[addr_key_field].nunique(),
-      "reject_mism": rejected[rejected[("work", "reject_reason")] == "mismatch"][addr_key_field].nunique() if rejected.shape[0]>0 else 0,
+      "reject_mism": rejected[rejected[("metadata", "reject_reason")] == "mismatch"][addr_key_field].nunique() if rejected.shape[0]>0 else 0,
      }
 
     return osm_results, rejected, step_stats
@@ -895,7 +896,7 @@ def get_init_df(data):
     """
     vlog("init_df:")
 
-    df= pd.DataFrame([{addr_key_field : data[addr_key_field] if addr_key_field in data and len(data[addr_key_field])>0 else "-1",
+    df= pd.DataFrame([{addr_key_field : data[addr_key_field] if addr_key_field in data and len(str(data[addr_key_field]))>0 else "-1",
                           street_field:   data[street_field],
                           housenbr_field: data[housenbr_field],
                           postcode_field: data[postcode_field],
@@ -923,16 +924,25 @@ def format_osm_addr(osm_rec):
         Compacted/formatted version of OSM output.
 
     """
-    res = {"work": {"method":"fast"},
-          "nominatim": {}}
+
+
+    res = {"metadata": {"method":"fast"},
+          # "nominatim": {},
+          "output": {} }
 
 
 
-    for fld in ["display_name", "place_id", "lat","lon", "place_rank"]:
+    for fld in ["display_name", "lat","lon"]:
         if fld in osm_rec:
-            res["nominatim"][fld] = osm_rec[fld]
-    for fld in osm_rec["address"]:
-        res["nominatim"][fld] = osm_rec["address"][fld]
+            res["output"][fld] = osm_rec[fld]
+
+    for fld in ["place_id", "place_rank"]:
+        if fld in osm_rec:
+            res["metadata"][fld] = osm_rec[fld]
+
+    # Useful ??
+    # for fld in osm_rec["address"]:
+    #     res["nominatim"][fld] = osm_rec["address"][fld]
 
 
     for out_field, in_fields in collapse_params.items():
@@ -949,7 +959,7 @@ def format_osm_addr(osm_rec):
 
 def process_address_fast(data, osm_structured=False,
                          with_extra_house_number=True,
-                         retry_with_low_rank=True, 
+                         retry_with_low_rank=True,
                          with_rejected=True):
     """
     Fast method, allowing to bypass all transformers/bypass procedure
@@ -999,7 +1009,9 @@ def process_address_fast(data, osm_structured=False,
 
     if len(osm_res) >0:
         match = format_osm_addr(osm_res[0])
-        if retry_with_low_rank and match["nominatim"]["place_rank"] < 30: # Try to clean housenumber to see if we can improved placerank
+
+        log(match)
+        if retry_with_low_rank and match["metadata"]["place_rank"] < 30: # Try to clean housenumber to see if we can improved placerank
             vlog("Trying retry_with_low_rank")
             start_timet2 = datetime.now()
             cleansed_housenbr = re.match("^([0-9]+)", data[housenbr_field])
@@ -1020,9 +1032,9 @@ def process_address_fast(data, osm_structured=False,
                 if osm_res_retry and 'error' in osm_res_retry:
                     return osm_res_retry
 
-                if osm_res_retry and osm_res_retry["match"][0]["nominatim"]["place_rank"] == 30: # if place_rank is not improved, we keep the original result
-                    osm_res_retry["match"][0]["work"]["cleansed_house_number"] = cleansed_housenbr
-                    osm_res_retry["match"][0]["work"]["retry_on_26"] = True
+                if osm_res_retry and osm_res_retry["match"][0]["metadata"]["place_rank"] == 30: # if place_rank is not improved, we keep the original result
+                    osm_res_retry["match"][0]["metadata"]["cleansed_house_number"] = cleansed_housenbr
+                    osm_res_retry["match"][0]["metadata"]["retry_on_26"] = True
                     if with_extra_house_number:
                         add_lpost_house_number(addr_in, osm_res_retry["match"][0], data)
 
@@ -1039,15 +1051,18 @@ def process_address_fast(data, osm_structured=False,
         for f in street_field, housenbr_field, postcode_field, city_field, country_field, addr_key_field:
             match[f[0]][f[1]] = data[f]
 
+        match['metadata'][addr_key_field[1]] = data[addr_key_field]
+        match['metadata']["osm_order"] = 0
 
         res = {"match":  [match],
                "rejected": []}
         if with_rejected:
-            for osm_rec in osm_res[1:]:
+            for i, osm_rec in enumerate(osm_res[1:]):
                 rec = format_osm_addr(osm_rec)
-                rec["work"]["reject_reason"]= "tail"
-                rec["work"]["dist_to_match"] = round(distance( (rec["nominatim"]["lat"], rec["nominatim"]["lon"]), (match["nominatim"]["lat"], match["nominatim"]["lon"])).km, 3)
-
+                rec["metadata"]["reject_reason"]= "tail"
+                rec["metadata"]["dist_to_match"] = round(distance( (rec["output"]["lat"], rec["output"]["lon"]), (match["output"]["lat"], match["output"]["lon"])).km, 3)
+                rec['metadata'][addr_key_field[1]] = data[addr_key_field]
+                rec['metadata']["osm_order"]=i+1
                 res["rejected"].append(rec)
 
         update_timestats("fast > format", start_time2)
@@ -1063,22 +1078,22 @@ def add_dist_to_match(osm_results, osm_reject):
     if osm_reject.shape[0] ==0:
         return osm_reject
     # log("add_dist_to_match")
-    s_bef =osm_reject.shape[0] 
+    s_bef =osm_reject.shape[0]
     osm_reject = osm_reject.merge(osm_results[[addr_key_field, ("nominatim", "lat"), ("nominatim", "lon")]].rename(columns={"nominatim": "nominatim_match"}), how="left")
-    
-    
+
+
     # log(osm_reject)
-    assert s_bef ==osm_reject.shape[0] 
-    
-    osm_reject[("work", "dist_to_match")] = osm_reject.apply(lambda rec: round(distance( (rec[("nominatim", "lat")], rec[("nominatim", "lon")]), (rec[("nominatim_match", "lat")], rec[("nominatim_match", "lon")])).km, 3), axis=1)
-    
+    assert s_bef ==osm_reject.shape[0]
+
+    osm_reject[("metadata", "dist_to_match")] = osm_reject.apply(lambda rec: round(distance( (rec[("nominatim", "lat")], rec[("nominatim", "lon")]), (rec[("nominatim_match", "lat")], rec[("nominatim_match", "lon")])).km, 3), axis=1)
+
     return osm_reject.drop("nominatim_match", level=0, axis=1)
-    
-    
-    
-    
-    
-    
+
+
+
+
+
+
 def process_address(data, check_results=True,
                     osm_structured=False,
                     with_extra_house_number=True,
@@ -1142,7 +1157,7 @@ def process_address(data, check_results=True,
             log(f"Error during processing : {exc}")
             vlog(traceback.format_exc())
             return {"error": str(exc)}
-        
+
         if with_rejected:
             all_reject = pd.concat([all_reject, rejected], sort=False)
             all_reject.columns = pd.MultiIndex.from_tuples(all_reject.columns, names=["L0", "L1"])
@@ -1156,13 +1171,13 @@ def process_address(data, check_results=True,
 
             if with_extra_house_number :
                 osm_results = add_extra_house_number(osm_results)
-            
-            
-            
+
+
+
             start_time = datetime.now()
             form_res =  multiindex_to_dict(osm_results)
 
-            if with_rejected: 
+            if with_rejected:
                 all_reject = add_dist_to_match(osm_results, all_reject)
                 form_rej = multiindex_to_dict(all_reject)
             else:
@@ -1236,7 +1251,7 @@ def process_addresses(to_process_addresses, check_results=True,
 
         except Exception as exc:
             osm_results = chunk[[addr_key_field]].copy()
-            osm_results[("work", "method")] = "error on " + ";".join(transformers)
+            osm_results[("metadata", "method")] = "error on " + ";".join(transformers)
             osm_addresses =  pd.concat([osm_addresses, osm_results], sort=False).drop_duplicates()
 
             log(f"Error during processing: {exc}")
@@ -1252,11 +1267,10 @@ def process_addresses(to_process_addresses, check_results=True,
 
     osm_addresses = osm_addresses.drop([street_field, housenbr_field, postcode_field, city_field, country_field], axis=1, errors="ignore").merge(to_process_addresses, how="left")
 
-
     if with_extra_house_number and osm_addresses.shape[0] > 0:
         osm_addresses = add_extra_house_number(osm_addresses)
-        
-    if with_rejected: 
+
+    if with_rejected:
         rejected_addresses = add_dist_to_match(osm_addresses, rejected_addresses)
 
     return osm_addresses, rejected_addresses #{"match": format_res(osm_results), "rejected": format_res(all_reject)}

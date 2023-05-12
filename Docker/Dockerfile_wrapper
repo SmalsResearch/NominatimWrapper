@@ -2,30 +2,26 @@
 
 # Install Python & Packages
 
-#RUN sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*
-#RUN sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
-#RUN yum -y update && yum -y install python3-3.8 gcc-4.8.5 yum-utils && package-cleanup --leaves --all
-
 FROM centos/python-38-centos7
 
 COPY Docker/requirements.txt ./
 RUN pip3 install  -r requirements.txt
 
-# Install code
 #
 
 RUN mkdir NominatimWrapper
 WORKDIR NominatimWrapper
-COPY *.py ./
 
 ENV LANG en_US.UTF-8  
 ENV LANGUAGE en_US:en  
 ENV LC_ALL en_US.UTF-8     
 
-#WORKDIR /
 
 
 COPY Docker/start.sh /start.sh
+# Install code
+COPY *.py ./
+
 CMD ["/start.sh", "wrapper"]
 
 EXPOSE 5000

@@ -63,10 +63,10 @@ street_field  =  ("input", "streetName")
 housenbr_field = ("input", "houseNumber")
 postcode_field = ("input", "postCode")
 city_field  =    ("input", "postName")
-country_field =  ("input", "country")
+country_field =  ("input", "countryName")
 addr_key_field = ("input", "addrKey")
 
-transformed_address_field = ("work", "transformed_address")
+transformed_address_field = ("metadata", "transformed_address")
 
 regex_replacements = {
     "init": [
@@ -114,10 +114,10 @@ default_transformers_sequence = [ ["orig"],
 # Mapping of nominatim results fields on our output fields
 collapse_params = {
     ("output", "street_name"):     ["road", "pedestrian","footway", "cycleway",
-                          "path", "address27", "construction", "hamlet", "park"],
+                          "path", "address27", "construction", "hamlet", "park", "square"],
     ("output", "post_name")  :   ["town", "village", "city_district", "county", "city"],
     ("output", "house_number"):    ["house_number"],
-    ("output", "country"):         ["country"],
+    ("output", "country_name"):    ["country"],
     ("output", "post_code"):       ["postcode"],
 }
 

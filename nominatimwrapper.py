@@ -21,6 +21,8 @@ Flask part of NominatimWrapper
 # - split/reorganise util.py
 # - according to 'mode', avoid to compute useless things
 
+# payload in json ?
+
 
 import os
 
@@ -32,13 +34,10 @@ import time
 import logging
 import json
 
-import gzip
-
 
 from flask import Flask,  request, url_for
-from flask_restx import Api, Resource, reqparse
+from flask_restx import Api, Resource, reqparse, fields
 
-import werkzeug
 
 import pandas as pd
 
@@ -58,7 +57,7 @@ from utils import (parse_address,
                                    multiindex_to_dict)
 
 
-from config import osm_host, libpostal_host, photon_host, default_transformers_sequence, city_test_from, city_test_to
+from config import osm_host, libpostal_host, photon_host, default_transformers_sequence, city_test_from, city_test_to, similarity_threshold
 
 
 # logger = logging.getLogger()
@@ -240,13 +239,13 @@ def convert_bool(value):
         if value.lower()=="true":
             return True
     return value
-        
-    
-    
+
+
+
 def get_arg(argname, def_val):
     """
-    Get argument from request form. Sometimes get it from request.form,
-    sometimes from request.args.get
+    Get argument from request form. Sometimes get it from request.form (from payload),
+    sometimes from request.args.get (from url args)
 
     Parameters
     ----------
@@ -262,33 +261,146 @@ def get_arg(argname, def_val):
 
     """
 
-    if argname in request.form:
+    if argname in request.form: # in payload
         return convert_bool(request.form[argname])
-    return convert_bool(request.args.get(argname, def_val))
+
+    return convert_bool(request.args.get(argname, def_val)) # in args
 
 
 app = Flask(__name__)
 api = Api(app,
-          version='0.1',
+          version='1.0.0',
           title='NominatimWrapper API',
           description="""A service that allows geocoding (postal address cleansing and conversion into geographical coordinates), based on Nominatim (OpenStreetMap).
-          
+
           Source available on: https://github.com/SmalsResearch/NominatimWrapper/
 
           """,
           external_docs={"description": "ext docs", "url": "https://github.com/SmalsResearch/NominatimWrapper/"}, # does not work
           doc='/doc',
-          prefix='/REST/nominatimWrapper/v0.1',
+          prefix='/REST/nominatimWrapper/v1.0',
           contact='Vandy BERTEN',
           contact_email='vandy.berten@smals.be',
-          contact_url='https://www.smalsresearch.be/author/berten/'
+          contact_url='https://www.smalsresearch.be/author/berten/',
+          #tags=['geocoding']
 )
 
 namespace = api.namespace(
     '',
     'Main namespace')
 
-# api.add_namespace(namespace)
+single_address = namespace.model("singleAddress",
+                          {'addrKey': fields.String(example="1"),
+                           'streetName':fields.String(example="Avenue Fonsny",
+                                                     description="The name of a passage or way through from one location to another (cf. Fedvoc)."),
+                           'houseNumber': fields.String(example="20",
+                                                       description = "An official alphanumeric code assigned to building units, mooring places, stands or parcels (cf. Fedvoc)"),
+                           'postCode': fields.String(example="1160",
+                                                    description="The post code (a.k.a postal code, zip code etc.) (cf. Fedvoc)"),
+                           'postName': fields.String(example="Bruxelles",
+                                                    description="Name with which the geographical area that groups the addresses for postal purposes can be indicated, usually the city (cf. Fedvoc)."),
+                           'countryName': fields.String(example="Belgium",
+                                                    description="The country of the address, expressed in natural language, possibly with errors (cf. Fedvoc)"),
+                          },
+                         description ="Generic content for a single input address")
+
+input_address   = namespace.model("inputAddress",   {"address": fields.Nested(single_address)})
+input_addresses = namespace.model("inputAddresses", {"addresses": fields.List(fields.Nested(single_address))})
+
+output_meta=namespace.model("outputMetadata", {
+    "method":       fields.String(description="Which transformation methods were used before sending the address to Nominatim. If the address was found without any transformation, will be 'orig' (or 'fast') (mode:all)",
+                                  example='libpostal+regex[lpost]'),
+    "addrKey":      fields.String(description="Copied from input (mode:all)",
+                                  example='1'),
+    "placeRank":    fields.String(description="'placeRank' field from Nominatim. 26: street level, 30: building level (mode:all)",
+                       example='30'),
+    "placeId":      fields.String(description="Nominatim identifier (mode:short,full)",
+                       example='182128'),
+    "rejectReason": fields.String(description="'mismatch' (only if checkResult is set to 'true') or 'tail' (only in 'rejected' bloc) (mode:all)",
+                                  example='tail'),
+     "distToMatch": fields.Float(description="Distance (in kilometer) to the result given in 'match' (only in 'rejected' bloc) (mode:short,full)",
+                                 example=0.1),
+
+    "transformedAddress": fields.String(description="What address (after possibly some sequence of transformations) is actually sent to Nominatim (mode:full)",
+                                       example="Avenue Fonsny, 20, 1060 Bruxelles"),
+    "osmOrder":     fields.Integer(description="What was the rank of this result in Nominatim result (more useful in 'rejected' part) (mode:full)",
+                                   example=0),
+    "retryOn26":    fields.Boolean(description="If placeRank in match record is below 30 and housenumber (in input) contains other characters than digits, we retry to call Nominatim by only considering the first digits of housenumber: '30A','30.3', '30 bt 2', '30-32' become '30'. If it gives a result with place_rank = 30, we keep it (in this case, a 'cleansedHouseNumber' appears in the output, with '30' in this example), and this field is set to 'True') (mode:full)",
+                                   example=True),
+    "cleansedHouseNumber": fields.String(description="Cf retryOn26 (mode:full)",
+                                         example="30")
+
+}, skip_none=True)
+
+
+
+output_output=namespace.model("outputOutput", {
+    "streetName": fields.String(description= 'first non null value in ["road", "pedestrian","footway", "cycleway", "path", "address27", "construction", "hamlet", "park", "square"] from nominatim result. (mode:short,full)',
+                                example="Avenue Fonsny - Fonsnylaan"),
+    "houseNumber": fields.String(description= 'house_number from nominatim result (mode:short,full)',
+                                 example='20'),
+    "postCode":    fields.String(description= 'postcode from nominatim result (mode:short,full)',
+                                 example='1060'),
+    "postName":    fields.String(description= 'First non null value in ["town", "village", "city_district", "county", "city"] from nominatim result (mode:short,full)',
+                                 example='Saint-Gilles - Sint-Gillis'),
+    "countryName": fields.String(description= 'country from nominatim result. (mode:short,full)',
+                                 example='België / Belgique / Belgien'),
+
+    "displayName": fields.String(description= 'display_name nominatim result (mode:short,full)',
+                                 example='20, Avenue Fonsny - Fonsnylaan, Saint-Gilles - Sint-Gillis, Brussel-Hoofdstad - Bruxelles-Capitale, Région de Bruxelles-Capitale - Brussels Hoofdstedelijk Gewest, 1060, België / Belgique / Belgien'),
+
+    "other":       fields.String(description= 'Concatenate all values which were not picked by one of the above item (mode:short,full)',
+                                 example=''),
+
+    "lpostHouseNumber":  fields.String(description= '"housenumber" provided by libpostal receiving concatenation of street and house number (from input) (if extraHouseNumber = true ; mode:short,full)',
+                                       example='20'),
+
+    "lpostUnit":  fields.String(description= '"unit"  provided by libpostal receiving concatenation of street and house number (from input) (if extraHouseNumber = true ; mode:short,full)',
+                                example='box 2'),
+
+
+
+    "lat": fields.Float(description= 'Latitude, in EPSG:4326. Angular distance from some specified circle or plane of reference (mode:all)',
+                       example=50.8358677),
+    "lon": fields.Float(description= 'Longitude, in EPSG:4326. Angular distance measured on a great circle of reference from the intersection of the adopted zero meridian with this reference circle to the similar intersection of the meridian passing through the object (mode:all)',
+                       example=4.3385087),
+
+
+}, skip_none=True)
+
+
+
+output_checks=namespace.model("outputChecks", {
+    "SIMStreetWhich": fields.String(description= 'Which field in Nominatim was compared to input street name. Could be street_name (cf streetName output bloc), other (one element in other from output bloc), alt_names (name found in parent node), namedetails (usually a translation of the street name)',
+                                    example="street_name"),
+    "SIMStreet":      fields.Float(description= 'Comparison score between input street name and the best item in the field given by SIMStreetWhich. Score is the maximum between Levenshtein distance (after removing common street name words in french/dutch, such as avenue, steenweg...) and an inclusion test (check that a string s1 is equal to another string s2, except that s2 contains an additional substring)',
+                                   example=0.8),
+    "SIMCity":        fields.Float(description= 'Levenshtein distances between in/out city names',
+                                   example=0.8),
+    "SIMZip":         fields.Float(description= 'Similarity between in/out postcode: 1 if both equal, 0.5 if two first digits are equal, 0 otherwise',
+                                   example=1.0),
+    "SIMHouseNumber": fields.Float(description= 'Similarity between house numbers. 1 if perfect (non empty) match, 0.8 on range match (10 vs 8-10 or 10-12), 0.5 on number match (10A vs 10)',
+                                   example=1.0),
+}, skip_none=True)
+
+
+
+output_address = namespace.model("cleansedAddress",
+                            {
+                               'metadata':   fields.Nested(output_meta,   skip_none=True, description= "Information describing the geocoding process"),
+                               'output':     fields.Nested(output_output, skip_none=True, description= "Geocoding result (standardized address and geographical coordinates)"),
+                               'check':      fields.Nested(output_checks, skip_none=True, mandatory=False, description=f"Similarity between input address and result (only if mode=long and checkResult=true). If checkResult=true, result are eliminated if (SIMZip = 0 and SimCity < {similarity_threshold}) or (SIMStreet < {similarity_threshold})")
+                            }, skip_none=True)
+
+geocode_output = namespace.model("geocodeOutput",
+                            {
+                               'match':     fields.List(fields.Nested(output_address), description="A list with a single result"),
+                               'rejected':    fields.List(fields.Nested(output_address), description="A list of rejected results (only if 'withRejected' is True)", mandatory=False)})
+
+geocode_batch_output = namespace.model("geocodeBatchOutput",
+                            {
+                               'match':     fields.List(fields.Nested(output_address), description="A list with all results"),
+                               'rejected':    fields.List(fields.Nested(output_address), description="A list of rejected results (only if 'withRejected' is True)", mandatory=False)})
 
 
 
@@ -303,15 +415,7 @@ if with_https=="YES":
     Api.specs_url = specs_url
 
 
-
 single_parser = reqparse.RequestParser()
-single_parser.add_argument('streetName',      type=str, help='Street name')
-single_parser.add_argument('houseNumber', type=str, help='House number')
-single_parser.add_argument('postName',    type=str, help='Postal name (city)')
-single_parser.add_argument('postCode',    type=str, help='Postal code')
-single_parser.add_argument('country',     type=str, help='Country name')
-single_parser.add_argument('addrKey',     type=str, help='Address key (optional, simply copied in output)')
-single_parser.add_argument('fullAddress',     type=str, help='Full address in a single field')
 
 single_parser.add_argument('mode',
                           type=str,
@@ -320,145 +424,130 @@ single_parser.add_argument('mode',
                           help="""
 Selection of columns in the ouput :
 
-- geo: only return lat/long
+- geo: return mainly lat/long
 - short: return lat/long, cleansed address (street, number, postcode, city, country)
 - long: return all results from Nominatim""")
 
 
 single_parser.add_argument('withRejected',
-                           type=str,
+                           type=bool,
                            choices=(True, False),
                            default=False,
                            help='If "true", rejected results are returned')
 single_parser.add_argument('checkResult',
-                           type=str,
+                           type=bool,
                            choices=(True, False),
                            default=False,
                            help='If "true", will "double check" OSM results')
 single_parser.add_argument('structOsm',
-                           type=str,
+                           type=bool,
                            choices=(True, False),
                            default=False,
                            help='If "true", will call the structured version of OSM')
 single_parser.add_argument('extraHouseNumber',
-                           type=str,
+                           type=bool,
                            choices=(True, False),
                            default=True,
-                           help='If "true", will call libpostal on all addresses to get the house number')
+                           help='If "true", will call libpostal on all addresses to get the house number (cf lpostHouseNumber and lpostUnit fields in output bloc of output)')
+
 
 @namespace.route('/geocode')
 class Geocode(Resource):
     """ Single address geocoding"""
-    @namespace.expect(single_parser)
+
+    @namespace.expect(single_parser, input_address)
+
     @namespace.response(400, 'Error in arguments')
     @namespace.response(500, 'Internal Server error')
-    @namespace.response(200, 'Found a match for this address (or some rejected addresses)')
     @namespace.response(204, 'No address found, even rejected')
 
 
+    @namespace.marshal_with(geocode_output, description='Found a match for this address (or some rejected addresses)', skip_none=True)#, code=200)
+
     def post(self):
         """
-        Geocode (postal address cleansing and conversion into geographical coordinates) a single address.
-        
-        
-Returns
--------
-Returns a dictionary with 2 parts. Depending of parameter "mode", various fields could be found.
+Geocode (postal address cleansing and conversion into geographical coordinates) a single address.
 
-In 'long' mode, each record will contain the following blocs:
-
-- match: a single result, with the following blocs:
-    - input : all columns present in input data, but at least "addrKey" (if provided), "streetName", "houseNumber", "postCode", "postName", "country"
-    - output: consolidated result of geocoding :
-        - streetName: first non null value in ["road", "pedestrian","footway", "cycleway", "path", "address27", "construction", "hamlet", "park"]
-        - houseNumber: house_number
-        - postCode: postcode
-        - postName: first non null value in ["town", "village", "city_district", "county", "city"],
-        - country: country
-        - other: concatenate all values which were not picked by one of the above item
-        - inHouseNumber: equivalent to input->houseNumber
-        - lpostHouseNumber: "housenumber" provided by libpostal receiving concatenation of street and house number (from input)
-        - lpostUnit: "unit"  provided by libpostal receiving concatenation of street and house number (from input)
-    - work: some metadata describing geocoding process:
-        - transformedAddress: what address (after possibly some sequence of transformations) is actually sent to Nominatim
-        - method: which transformation methods were used before sending the address to Nominatim. If the address was found without any transformation, will be "orig" (or "fast")
-        - osmOrder: what was the rank of this result in Nominatim result (more useful in 'rejected' part)
-        - retryOn_26: If placeRank in match record is below 30 and housenumber (in input) contains other characters than digits, we retry to call Nominatim by only considering the first digits of housenumber: "30A","30.3", "30 bt 2", "30-32" become "30". If it gives a result with place_rank = 30, we keep it (in this case, a "cleansedHouseNumber" appears in the output, with "30" in this example), and this field is set to "True"
-    - nominatim: selection of fields received from Nominatim:
-        - lat
-        - lon
-        - placeRank
-        - displayName
-        - all fields in the "address" bloc
-    - check:  Check results indicators (if checkResult='true'):
-        - SIMStreetWhich
-        - SIMStreet
-        - SIMCity
-        - SIMZip
-        - SIMHouseNumber
-
-- reject: list of rejected results, with most of the same fields, with additionnal fields:
-     - rejectReason: 'mismatch" or "tail"
-     - distToMatch: distance (in kilometer) to the result given in "match"
-
-In 'geo' mode: only 'lat', 'lon', and 'placeRank' values from 'nominatim', 'addrKey' from 'input', and 'method' from 'work'
-
-In 'short' mode: idem as 'geo', plus full 'output' bloc
-
+Fields available in output will depends upon parameter "mode" (see 'mode:xx' in response model)
         """
 
         log("geocode")
+
         start_time = datetime.now()
 
         for k in timestats:
             timestats[k]=timedelta(0)
 
-        address = get_arg("fullAddress",  "")
-        data= {
-               street_field   : get_arg(street_field[1],      ""),
-               housenbr_field : get_arg(housenbr_field[1],    ""),
-               city_field     : get_arg(city_field[1],        ""),
-               postcode_field : get_arg(postcode_field[1],    ""),
-               country_field  : get_arg(country_field[1],     ""),
-               addr_key_field  : get_arg(addr_key_field[1],     ""),
-              }
+        try:
+            if "address" not in namespace.payload:
+                namespace.abort(400, "No data (address) was provided in payload")
+        except Exception as e:
+            log("exception")
+            log(e)
 
-        mode = get_arg("mode", "short")
-        if not mode in ["geo", "short", "long"]:
-            return [{"error": f"Invalid mode {mode}"}], 400
+            namespace.abort(400, "Cannot read request payload")
 
-
+        data = namespace.payload["address"]
 
         used_fields = list(filter(lambda x: data[x]!="", data))
 
         vlog(f"used_fields: {used_fields}")
 
+        mode = get_arg("mode", "short")
+        if not mode in ["geo", "short", "long"]:
+            namespace.abort(400, f"Invalid mode {mode}")
+
         error_msg = "Invalid value for '%s'. Possible values are 'true' or 'false' (received '%s')"
         with_rejected = get_arg("withRejected", False)
         if not with_rejected in [True, False]:
-            return [{"error": error_msg%('withRejected', with_rejected)}], 400
+            namespace.abort(400, error_msg%('withRejected', with_rejected))
 
         check_results = get_arg("checkResult", False)
         if not check_results in [True, False]:
-            return [{"error": error_msg%('checkResult', check_results)}], 400
+            namespace.abort(400, error_msg%('checkResult', check_results))
 
         osm_structured = get_arg("structOsm", False)
         if not osm_structured in [True, False]:
-            return [{"error": error_msg%('structOsm', osm_structured)}], 400
+            namespace.abort(400, error_msg%('structOsm', osm_structured))
 
         with_extra_house_number =  get_arg("extraHouseNumber", True)
         if not with_extra_house_number in [True, False]:
-            return [{"error": error_msg%('extraHouseNumber', with_extra_house_number)}], 400
+            return namespace.abort(400, error_msg%('extraHouseNumber', with_extra_house_number))
 
-        if address != "":
-            if len(used_fields)>0:
-                return [{"error": "Field 'fullAddress' cannot be used together with fields "+";".join(used_fields)}],  400
+
+        mandatory_fields = {street_field[1], housenbr_field[1], city_field[1], postcode_field[1], country_field[1]}
+        if "fullAddress" in data:
+            forbidden_fields = data.keys() & mandatory_fields
+
+            if len(forbidden_fields) >0:
+                namespace.abort(400, "Field 'fullAddress' cannot be used together with fields "+";".join(forbidden_fields))
+
             if osm_structured :
-                return [{"error": "Field 'fullAddress' cannot be used together with fields 'structOsm=true'"}],   400
+                namespace.abort(400, "Field 'fullAddress' cannot be used together with fields 'structOsm=true'")
             if check_results :
-                return [{"error": "Field 'fullAddress' cannot be used together with fields 'checkResult=true'"}], 400
+                namespace.abort(400, "Field 'fullAddress' cannot be used together with fields 'checkResult=true'")
 
-            data[street_field] = address
+
+            for f in mandatory_fields:
+                data[f] = ""
+            data[street_field[1]] = data["fullAddress"]
+        else:
+
+            missing_fields = mandatory_fields - data.keys()
+
+            if len(missing_fields)>0:
+                namespace.abort(400, f"Fields '{'; '.join(missing_fields)}' mandatory in 'address'.")
+
+
+
+
+        _data = {}
+        for f in data:
+            _data[("input", f)] = data[f]
+        data = _data
+
+        if addr_key_field not in data:
+            data[addr_key_field] = "-1"
 
 
         log("Parameters:")
@@ -483,29 +572,27 @@ In 'short' mode: idem as 'geo', plus full 'output' bloc
 
         log(f"Result: {res}")
 
-        def filter_dict(dict_data, fields):
-            return { f1: {f2:dict_data[f1][f2] for f2 in fields[f1] if f2 in dict_data[f1] } for f1 in fields if f1 in dict_data}
+        def filter_dict(dict_data, out_fields):
+            return { f1: {f2:dict_data[f1][f2] for f2 in out_fields[f1] if f2 in dict_data[f1] } for f1 in out_fields if f1 in dict_data}
         try:
 
             if mode == "geo":
-                fields={addr_key_field[0]:[addr_key_field[1]], "nominatim": ["lat", "lon", "place_rank"], "work": ["method", "reject_reason"]}
+                out_fields={"output": ["lat", "lon", ], "metadata": ["method", "reject_reason", "place_rank", addr_key_field[1]]}
 
             elif mode == "short":
-                fields={addr_key_field[0]:[addr_key_field[1]],
-                        "nominatim": ["lat", "lon", "place_rank"],
-                        "work": ["method","reject_reason", "dist_to_match"],
+                out_fields={"metadata": ["method","reject_reason", "place_rank", "dist_to_match", addr_key_field[1]],
                         "output": res["match"][0]["output"]}
 
             elif mode == "long":
-                fields = None
+                out_fields = None
 
-            if fields:
-                res["match"] =    [filter_dict(res["match"][0], fields)]
+            if out_fields:
+                res["match"] =    [filter_dict(res["match"][0], out_fields)]
 
             if not with_rejected and "rejected" in res:
                 del res["rejected"]
-            elif fields:
-                res["rejected"] = [filter_dict(rec, fields) for rec in res["rejected"]]
+            elif out_fields:
+                res["rejected"] = [filter_dict(rec, out_fields) for rec in res["rejected"]]
 
             log(f"Result after selection: {res}")
 
@@ -520,9 +607,10 @@ In 'short' mode: idem as 'geo', plus full 'output' bloc
 
 
         if "error" in res:
-            return res, 500
+            namespace.abort(500, res["error"])
 
         return_code = 200 if ("match" in res and len(res["match"])>0) or ("rejected" in res and len(res["rejected"])>0) else 204
+
 
         return to_camel_case(res), return_code
 
@@ -530,18 +618,18 @@ In 'short' mode: idem as 'geo', plus full 'output' bloc
 
 # Call to this : curl -F media=@address_sample100.csv http://127.0.0.1:5000/batch/ -X POST -F mode=long
 batch_parser = reqparse.RequestParser()
-batch_parser.add_argument('csv file',
-                          type=werkzeug.datastructures.FileStorage,
-                          location='files',
-                          help="""
-A CSV file with the following columns:
+# batch_parser.add_argument('csv file',
+#                           type=werkzeug.datastructures.FileStorage,
+#                           location='files',
+#                           help="""
+# A CSV file with the following columns:
 
-- streetName
-- houseNumber
-- postCode
-- postName
-- country
-- addrKey (must be unique)""")
+# - streetName
+# - houseNumber
+# - postCode
+# - postName
+# - country
+# - addrKey (must be unique)""")
 
 batch_parser.add_argument('mode',
                           type=str,
@@ -555,23 +643,23 @@ Selection of columns in the ouput :
 - long: return all results from Nominatim""")
 
 batch_parser.add_argument('withRejected',
-                          type=str,
+                          type=bool,
                           choices=(True, False),
                           default=False,
                           help='if "true", rejected results are returned')
 
 batch_parser.add_argument('checkResult',
-                          type=str,
+                          type=bool,
                           choices=(True, False),
                           default=False,
                           help='if "true", will "double check" OSM results')
 batch_parser.add_argument('structOsm',
-                          type=str,
+                          type=bool,
                           choices=(True, False),
                           default=False,
                           help='if "true", will call the structured version of OSM')
 batch_parser.add_argument('extraHouseNumber',
-                          type=str,
+                          type=bool,
                           choices=(True, False),
                           default=True,
                           help='if "true", will call libpostal on all addresses to get the house number')
@@ -581,58 +669,19 @@ batch_parser.add_argument('extraHouseNumber',
 class BatchGeocode(Resource):
     """Batch geocoding"""
 
-    @namespace.expect(batch_parser)
+    @namespace.expect(batch_parser, input_addresses)
+
     @namespace.response(400, 'Error in arguments')
     @namespace.response(500, 'Internal Server error')
-    @namespace.response(200, 'Found some results for at least one address')
     @namespace.response(204, 'No result at all')
+
+    @namespace.marshal_with(geocode_batch_output, description='Found some results for at least one address', skip_none=True)#, code=200)
 
     def post(self):
         """
-Geocode (postal address cleansing and conversion into geographical coordinates) all addresses in csv like file.
+Geocode (postal address cleansing and conversion into geographical coordinates) all addresses in list.
 
-Returns
--------
-A json dictionary of the shape {'match': [<list of dictionaries>]} containing geocoded addresses. Depending of parameter "mode", following fields could be found:
-In 'long' mode, each record will contain the following blocs:
-
-- input : all columns present in input data, but at least "addrKey", "streetName", "houseNumber", "postCode", "postName", "country"
-- output: consolidated result of geocoding :
-    - streetName: first non null value in ["road", "pedestrian","footway", "cycleway", "path", "address27", "construction", "hamlet", "park"]
-    - houseNumber: house_number
-    - postCode: postcode
-    - postName: first non null value in ["town", "village", "city_district", "county", "city"],
-    - country: country
-    - other: concatenate all values which were not picked by one of the above item
-    - inHouseNumber: equivalent to input->houseNumber
-    - lpostHouseNumber: "housenumber" provided by libpostal receiving concatenation of street and house number (from input)
-    - lpostUnit: "unit"  provided by libpostal receiving concatenation of street and house number (from input)
-- work: some metadata describing geocoding process:
-    - transformedAddress: what address (after possibly some sequence of transformations) is actually sent to Nominatim
-    - method: which transformation methods were used before sending the address to Nominatim. If the address was found without any transformation, will be "orig" (or "fast")
-    - osmOrder: what was the rank of this result in Nominatim result (more useful in 'rejected' part)
-    - retryOn26: If placeRank in match record is below 30 and housenumber (in input) contains other characters than digits, we retry to call Nominatim by only considering the first digits of housenumber: "30A","30.3", "30 bt 2", "30-32" become "30". If it gives a result with place_rank = 30, we keep it (in this case, a "cleansedHouse" appears in the output, with "30" in this example), and this field is set to "True"
-- nominatim: selection of fields received from Nominatim:
-    - lat
-    - lon
-    - placeRank
-    - displayName
-    - all fields in the "address" bloc
-- check:  Check results indicators (if checkResult='true'):
-    - SIMStreetWhich
-    - SIMStreet
-    - SIMCity
-    - SIMZip
-    - SIMHouseNumber
-
-In 'geo' mode: only 'lat', 'lon', and 'placeRank' values from 'nominatim', 'addrKey' from 'input', and 'method' from 'work'
-
-In 'short' mode: idem as 'geo', plus full 'output' bloc
-
-
-If "withRejected=true", an additional field 'rejected' with all rejected records is added, with the same field selection as above, according to "mode", plus one additional fields, 'rejectReason'. Equal to:
-- 'mismatch' if 'checkResult=true', and this result is "too far away" from the original value
-- 'tail' if it was just not the first record.
+Fields available in output will depends upon parameter "mode" (see 'mode:xx' in response model)
 
 
         """
@@ -640,44 +689,56 @@ If "withRejected=true", an additional field 'rejected' with all rejected records
 
         mode = get_arg("mode", "short")
         if not mode in ["geo", "short", "long"]:
-            return [{"error": f"Invalid mode {mode}"}], 400
+            namespace.abort(400, f"Invalid mode {mode}")
 
         error_msg = "Invalid value for '%s'. Possible values are 'true' or 'false' (received '%s')"
         with_rejected = get_arg("withRejected", False)
         if not with_rejected in [True, False]:
-            return [{"error": error_msg%('withRejected', with_rejected)}], 400
+            namespace.abort(400, error_msg%('withRejected', with_rejected))
 
         check_results = get_arg("checkResult", False)
         if not check_results in [True, False]:
-            return [{"error": error_msg%('checkResult', check_results)}], 400
+            namespace.abort(400, error_msg%('checkResult', check_results))
 
         osm_structured = get_arg("structOsm", False)
         if not osm_structured in [True, False]:
-            return [{"error": error_msg%('structOsm', osm_structured)}], 400
+            namespace.abort(400, error_msg%('structOsm', osm_structured))
 
         with_extra_house_number =  get_arg("extraHouseNumber", True)
         if not with_extra_house_number in [True, False]:
-            return [{"error": error_msg%('extraHouseNumber', with_extra_house_number)}], 400
+            namespace.abort(400, error_msg%('extraHouseNumber', with_extra_house_number))
 
-        if len(list(request.files.keys()))==0:
-            return [{"error": "No file data was provided"}], 400
 
-        key_name = (list(request.files.keys())[0])
 
-        #log(request.files[0])
-        #log(key_name)
         try:
-            df = pd.read_csv(request.files[key_name], dtype=str)
+            if "addresses" not in namespace.payload:
+                namespace.abort(400, "No data (address) was provided in payload")
+        except Exception as e:
+            log("exception")
+            log(e)
 
-        except UnicodeDecodeError as ude:
-            log("Could not parse file, try to decompress...")
-            log(ude)
+            namespace.abort(400, "Cannot read request payload")
 
-            gzip_f = request.files[key_name]
-            gzip_f.seek(0)
-            g_f = gzip.GzipFile(fileobj=gzip_f,  mode='rb')
+        data = namespace.payload["addresses"]
 
-            df = pd.read_csv(g_f, dtype=str)
+        if not isinstance(data, list):
+            namespace.abort(400, f"Wrong format for 'addresses' in payload. Expecting a list of dicts (not a {type(data)})")
+
+        if len(data)==0:
+            namespace.abort(400, "List in 'addresses' in payload is empty")
+
+        if not isinstance(data[0], dict):
+            namespace.abort(400, "Wrong format for 'addresses' in payload. Expecting a list of dicts")
+
+        try:
+            df=pd.DataFrame(data)
+        except ValueError as ve:
+            namespace.abort(400, "Wrong format for 'addresses' in payload. Cannot build a dataframe from this data")
+
+            log("Wrong format for 'addresses' in payload. Cannot build a dataframe from this data")
+            log(data)
+            log(ve)
+
 
         old_col_idx = df.columns.to_frame()
         old_col_idx.insert(0, 'L0', ["input"]*df.columns.shape[0])
@@ -687,10 +748,10 @@ If "withRejected=true", an additional field 'rejected' with all rejected records
         mandatory_fields = [street_field, housenbr_field , postcode_field , city_field, addr_key_field, country_field]
         for field in mandatory_fields:
             if field not in df:
-                return [{"error": f"Field '{field[1]}' mandatory in file. All mandatory fields are {';'.join([f[1] for f in mandatory_fields])}"}], 400
+                namespace.abort(400, f"Field '{field[1]}' mandatory in file. All mandatory fields are {';'.join([f[1] for f in mandatory_fields])}")
 
         if df[df[addr_key_field].duplicated()].shape[0]>0:
-            return [{"error": f"Field '{addr_key_field[1]}' cannot contain duplicated values!"}], 400
+            namespace.abort(400, f"Field '{addr_key_field[1]}' cannot contain duplicated values!")
 
         res, rejected_addresses = process_addresses(df,
                                                     check_results=check_results,
@@ -712,26 +773,29 @@ If "withRejected=true", an additional field 'rejected' with all rejected records
 
         log("res:")
         log(res)
-        for field, f_type in [("place_id", int), ("place_rank", int), ("lat", float), ("lon", float)]:
-            if ("nominatim", field) in res:
-                res[("nominatim", field)] = res[("nominatim", field)].astype(f_type)
-            if ("nominatim", field) in rejected_addresses:
-                rejected_addresses[("nominatim", field)] = rejected_addresses[("nominatim", field)].astype(f_type)
+        # Field formatting
+        for field, f_type in [(("metadata", "place_id"), int), (("metadata", "place_rank"), int), (("output", "lat"), float), (("output", "lon"), float)]:
+            if field in res:
+                res[field] = res[field].astype(f_type)
+            if field in rejected_addresses:
+                rejected_addresses[field] = rejected_addresses[field].astype(f_type)
+
+        # Field selection
         try:
             if mode == "geo":
-                fields= [addr_key_field, ("nominatim", "lat"), ("nominatim", "lon"), ("nominatim", "place_rank"), ("work", "method"), ("work", "reject_reason")]
-                res = res[[ f for f in fields if f in res ] ]
-                rejected_addresses = rejected_addresses[ [ f for f in fields if f in rejected_addresses ] ]
+                out_fields= [("metadata", addr_key_field[1]), ("output", "lat"), ("output", "lon"), ("metadata", "place_rank"), ("metadata", "method"), ("metadata", "reject_reason")]
+                res = res[[ f for f in out_fields if f in res ] ]
+                rejected_addresses = rejected_addresses[ [ f for f in out_fields if f in rejected_addresses ] ]
             elif mode == "short":
-                fields=[addr_key_field,
-                           ("nominatim", "lat"), ("nominatim", "lon"), ("nominatim", "place_rank"), ("nominatim", "place_id"), ("work", "method"),("work", "dist_to_match"), ("work", "reject_reason")
+                out_fields=[("metadata", addr_key_field[1]),
+                           ("metadata", "place_rank"), ("metadata", "place_id"), ("metadata", "method"),("metadata", "dist_to_match"), ("metadata", "reject_reason")
                             ] + [("output", f) for f in res[("output")].columns]
 
                 res = df.merge(res)
-                res = res[[ f for f in fields if f in res ]]
-                
+                res = res[[ f for f in out_fields if f in res ]]
 
-                rejected_addresses = rejected_addresses[[ f for f in fields if f in rejected_addresses ]]
+
+                rejected_addresses = rejected_addresses[[ f for f in out_fields if f in rejected_addresses ]]
             elif mode == "long":
                 pass
 

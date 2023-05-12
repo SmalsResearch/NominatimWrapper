@@ -23,10 +23,9 @@ fi
 
 if [[ $what == *"wrapper"* ]]; then
     echo "Running REST service"
-    cd /NominatimWrapper
+    cd ~/NominatimWrapper
     gunicorn -w ${NB_WORKERS:-1} -b 0.0.0.0:5000 -e OSM_HOST=${OSM_HOST} --timeout 600 nominatimwrapper:app &
 fi
-
 
 while :; do sleep 3600 ; done
 

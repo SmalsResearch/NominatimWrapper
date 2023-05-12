@@ -465,7 +465,7 @@ def ignore_mismatch_keep_bests(addr_matches,
                                postcode_field_a, city_field_a,
                                street_field_b, housenbr_field_b,
                                postcode_field_b, city_field_b,
-                               max_res=1, secondary_sort_field = ("work", "osm_order")):
+                               max_res=1, secondary_sort_field = ("metadata", "osm_order")):
     """
     Compare input address with output result.
     We put in "keep":
@@ -539,21 +539,16 @@ def ignore_mismatch_keep_bests(addr_matches,
 
     distances[("check","SIM_zip")] =       postcode_compare(addr_matches[postcode_field_a].fillna(""), addr_matches[postcode_field_b].fillna(""))
 
-    log(city_field_a)
-    log(addr_matches)
-    log(addr_matches[city_field_a])
-    log(city_field_b)
-    log(addr_matches[city_field_b])
-    
+
     distances[("check","SIM_city")] =      city_compare(addr_matches[city_field_a].fillna(""), addr_matches[city_field_b].fillna(""))
 
-    elimination_rule = ((distances[("check","SIM_zip")] < 0.1) & (distances[("check","SIM_city")] < similarity_threshold)) |                         ((distances[("check","SIM_street")] < similarity_threshold)  )
+    elimination_rule = ((distances[("check","SIM_zip")] < 0.1) & (distances[("check","SIM_city")] < similarity_threshold)) |                         (distances[("check","SIM_street")] < similarity_threshold)  
 
-
+    
 
     rejected = addr_matches[elimination_rule].merge(distances, left_index=True, right_index=True).copy()
 
-    rejected[("work","reject_reason")] = "mismatch"
+    rejected[("metadata","reject_reason")] = "mismatch"
 
 
     # Remove non acceptable results
@@ -565,7 +560,7 @@ def ignore_mismatch_keep_bests(addr_matches,
     result_head = result.groupby([addr_key_field]).head(max_res)#.drop("level_2", axis=1)#.set_index([key, addr_key_field])#[init_osm.index.get_level_values(1) == 140266    ]
 
     result_tail = result[~result.index.isin(result_head.index)].copy()
-    result_tail[("work", "reject_reason")] = "tail"
+    result_tail[("metadata", "reject_reason")] = "tail"
 
     keep = result_head
     reject = pd.concat([rejected, result_tail])
@@ -600,11 +595,11 @@ def match_parent(osm_results, osm_reject):
     vlog("     - Trying alternative (parent) names for rejected answers")
 
     # Keep rejected records that do not correspond to an accepted address
-    final_rejected = osm_reject[(osm_reject[("work", "reject_reason")] == "mismatch") &
+    final_rejected = osm_reject[(osm_reject[("metadata", "reject_reason")] == "mismatch") &
                                 (~osm_reject[addr_key_field].isin(osm_results[addr_key_field]))]
 
 
-    final_rejected = final_rejected.drop(("work", "reject_reason"), axis=1)
+    final_rejected = final_rejected.drop(("metadata", "reject_reason"), axis=1)
     # Get parent place id from place id calling get_osm_details
     parent_place_id = final_rejected[("nominatim", "place_id")].apply(get_osm_details).apply(lambda x: (x["parent_place_id"] if "parent_place_id" in x else 0 ))
 
@@ -711,7 +706,7 @@ def osm_keep_relevant_results(osm_results, addresses, max_res=1):
                                       housenbr_field_b = housenbr_field,
                                       postcode_field_b = postcode_field,
                                       city_field_b = city_field,
-                                      secondary_sort_field = ("work", "osm_order"),
+                                      secondary_sort_field = ("metadata", "osm_order"),
                                       max_res=max_res)
 
     return keep, reject

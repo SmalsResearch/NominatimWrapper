@@ -7,5 +7,5 @@ requests==2.25.0
 jellyfish==0.8.2 
 geopy==2.2.0 
 #flask_restplus==0.13.0
-flask-restx
+flask-restx==1.1.0
 Werkzeug==2.2.3
