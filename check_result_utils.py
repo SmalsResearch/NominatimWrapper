@@ -389,12 +389,12 @@ def street_compare(street1, street2):
             str_b = street2_split[bi]#.str.upper().apply(remove_accents)
             # str_b = str_b.str.replace( r"[^A-Z ]+", " ").str.replace(" [ ]+", " ").str.strip()
 
-            street_distances[f"SIM_street_a{ai}b{bi}"] = _street_compare(str_a,
+            street_distances[f"sim_street_a{ai}b{bi}"] = _street_compare(str_a,
                                                                          str_b,
                                                                          compare_algo=levenshtein_similarity,
                                                                          street_compare_removes=def_street_compare_removes)
             # to calculate (strict) inclusion, we do not remove "street words" (Rue, Avenue ...)
-            street_distances[f"INC_street_a{ai}b{bi}"] = _street_compare(str_a,
+            street_distances[f"inc_street_a{ai}b{bi}"] = _street_compare(str_a,
                                                                          str_b,
                                                                          compare_algo=inclusion_test,
                                                                          street_compare_removes=[])
@@ -402,18 +402,18 @@ def street_compare(street1, street2):
             #fgpta = fingerprint(str_a)
             #fgptb = fingerprint(str_b)
 
-            street_distances[f"FING_street_a{ai}b{bi}"] =  _street_compare(fingerprints1[ai],
+            street_distances[f"fing_street_a{ai}b{bi}"] =  _street_compare(fingerprints1[ai],
                                                                            fingerprints2[bi],
                                                                            compare_algo=levenshtein_similarity,
                                                                            street_compare_removes=def_street_compare_removes)
 
-    street_distances["SIM_street"] =  street_distances[filter(lambda x: "SIM_street_a" in x
-                                                              or "INC_street_a" in x
-                                                              or "FING_street_a" in x, street_distances)].max(axis=1)
+    street_distances["sim_street"] =  street_distances[filter(lambda x: "sim_street_a" in x
+                                                              or "inc_street_a" in x
+                                                              or "fing_street_a" in x, street_distances)].max(axis=1)
 #     display(street_distances[street1.fillna("").str.contains("AUTOSNELWEGEN") ])
     vlog(f"Street compare: {street1.name}, {street2.name}")
     vlog(pd.concat([street1_split, street2_split, street_distances], axis=1))
-    return street_distances["SIM_street"]
+    return street_distances["sim_street"]
 
 
 # In[ ]:
@@ -516,33 +516,31 @@ def ignore_mismatch_keep_bests(addr_matches,
 
     street_b = addr_matches[street_field_b]
 
-    distances[("check", "SIM_street")] = -1
-    distances[("check","SIM_street_which")]=""
+    distances[("check", "sim_street")] = -1
+    distances[("check","sim_street_which")]=""
     distances.columns = pd.MultiIndex.from_tuples(distances.columns, names=["L0", "L1"])
 
     vlog("Will compare streets")
     for street_field_a in street_fields_a :
         # Only compute a new street distance if the computed distance is below the threshold so far
-        x = (distances[("check","SIM_street")] < similarity_threshold)
+        x = (distances[("check","sim_street")] < similarity_threshold)
 
-        distances[("check","SIM_street")] = distances[("check","SIM_street")].where(~x, street_compare(addr_matches[street_field_a][x].fillna(""), street_b[x]))
+        distances[("check","sim_street")] = distances[("check","sim_street")].where(~x, street_compare(addr_matches[street_field_a][x].fillna(""), street_b[x]))
 
-        distances[("check","SIM_street_which")] =  distances[("check","SIM_street_which")].where(~x,street_field_a[1]) # last field that has been compared
+        distances[("check","sim_street_which")] =  distances[("check","sim_street_which")].where(~x,street_field_a[1]) # last field that has been compared
 
-    wsu = " ; ".join([f"{r}: {c}" for r, c in distances[distances[("check", "SIM_street")] >= similarity_threshold][("check","SIM_street_which")].value_counts().items()])
+    wsu = " ; ".join([f"{r}: {c}" for r, c in distances[distances[("check", "sim_street")] >= similarity_threshold][("check","sim_street_which")].value_counts().items()])
     vlog(f"Which street used: {wsu}")
 
 
-    #w = distances[(distances[("check","SIM_street")] >= similarity_threshold)&(distances[("check","SIM_street_which")]!=street_fields_a[0] )].merge(addr_matches, left_index=True, right_index=True)
+    distances[("check","sim_house_number")] = house_number_compare(addr_matches[housenbr_field_a].fillna(""), addr_matches[housenbr_field_b].fillna(""))
 
-    distances[("check","SIM_house_number")] = house_number_compare(addr_matches[housenbr_field_a].fillna(""), addr_matches[housenbr_field_b].fillna(""))
-
-    distances[("check","SIM_zip")] =       postcode_compare(addr_matches[postcode_field_a].fillna(""), addr_matches[postcode_field_b].fillna(""))
+    distances[("check","sim_zip")] =       postcode_compare(addr_matches[postcode_field_a].fillna(""), addr_matches[postcode_field_b].fillna(""))
 
 
-    distances[("check","SIM_city")] =      city_compare(addr_matches[city_field_a].fillna(""), addr_matches[city_field_b].fillna(""))
+    distances[("check","sim_city")] =      city_compare(addr_matches[city_field_a].fillna(""), addr_matches[city_field_b].fillna(""))
 
-    elimination_rule = ((distances[("check","SIM_zip")] < 0.1) & (distances[("check","SIM_city")] < similarity_threshold)) |                         (distances[("check","SIM_street")] < similarity_threshold)  
+    elimination_rule = ((distances[("check","sim_zip")] < 0.1) & (distances[("check","sim_city")] < similarity_threshold)) | (distances[("check","sim_street")] < similarity_threshold)  
 
     
 
@@ -552,7 +550,7 @@ def ignore_mismatch_keep_bests(addr_matches,
 
 
     # Remove non acceptable results
-    result = addr_matches[~elimination_rule].merge(distances, left_index=True, right_index=True).sort_values([addr_key_field, ("check","SIM_street"), ("check","SIM_house_number"), secondary_sort_field], ascending=[True, False, False, True])
+    result = addr_matches[~elimination_rule].merge(distances, left_index=True, right_index=True).sort_values([addr_key_field, ("check","sim_street"), ("check","sim_house_number"), secondary_sort_field], ascending=[True, False, False, True])
 
     vlog("result:")
     vlog(result)

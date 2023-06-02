@@ -8,8 +8,6 @@ Flask part of NominatimWrapper
 
 """
 
-
-
 # pylint: disable=line-too-long
 # pylint: disable=invalid-name
 
@@ -18,10 +16,8 @@ Flask part of NominatimWrapper
 # - SSL ?
 # - "namespace" is empty
 # - Full address en batch
-# - split/reorganise util.py
 # - according to 'mode', avoid to compute useless things
 
-# payload in json ?
 
 
 import os
@@ -37,7 +33,6 @@ import json
 
 from flask import Flask,  request, url_for
 from flask_restx import Api, Resource, reqparse, fields
-
 
 import pandas as pd
 
@@ -302,9 +297,10 @@ single_address = namespace.model("singleAddress",
                            'countryName': fields.String(example="Belgium",
                                                     description="The country of the address, expressed in natural language, possibly with errors (cf. Fedvoc)"),
                           },
-                         description ="Generic content for a single input address")
+                         description ="Generic content for a single input address",
+                         skip_none=True)
 
-input_address   = namespace.model("inputAddress",   {"address": fields.Nested(single_address)})
+input_address   = namespace.model("inputAddress",   {"address": fields.Nested(single_address)}, skip_none=True)
 input_addresses = namespace.model("inputAddresses", {"addresses": fields.List(fields.Nested(single_address))})
 
 output_meta=namespace.model("outputMetadata", {
@@ -371,15 +367,15 @@ output_output=namespace.model("outputOutput", {
 
 
 output_checks=namespace.model("outputChecks", {
-    "SIMStreetWhich": fields.String(description= 'Which field in Nominatim was compared to input street name. Could be street_name (cf streetName output bloc), other (one element in other from output bloc), alt_names (name found in parent node), namedetails (usually a translation of the street name)',
+    "simStreetWhich": fields.String(description= 'Which field in Nominatim was compared to input street name. Could be street_name (cf streetName output bloc), other (one element in other from output bloc), alt_names (name found in parent node), namedetails (usually a translation of the street name)',
                                     example="street_name"),
-    "SIMStreet":      fields.Float(description= 'Comparison score between input street name and the best item in the field given by SIMStreetWhich. Score is the maximum between Levenshtein distance (after removing common street name words in french/dutch, such as avenue, steenweg...) and an inclusion test (check that a string s1 is equal to another string s2, except that s2 contains an additional substring)',
+    "simStreet":      fields.Float(description= 'Comparison score between input street name and the best item in the field given by simStreetWhich. Score is the maximum between Levenshtein distance (after removing common street name words in french/dutch, such as avenue, steenweg...) and an inclusion test (check that a string s1 is equal to another string s2, except that s2 contains an additional substring)',
                                    example=0.8),
-    "SIMCity":        fields.Float(description= 'Levenshtein distances between in/out city names',
+    "simCity":        fields.Float(description= 'Levenshtein distances between in/out city names',
                                    example=0.8),
-    "SIMZip":         fields.Float(description= 'Similarity between in/out postcode: 1 if both equal, 0.5 if two first digits are equal, 0 otherwise',
+    "simZip":         fields.Float(description= 'Similarity between in/out postcode: 1 if both equal, 0.5 if two first digits are equal, 0 otherwise',
                                    example=1.0),
-    "SIMHouseNumber": fields.Float(description= 'Similarity between house numbers. 1 if perfect (non empty) match, 0.8 on range match (10 vs 8-10 or 10-12), 0.5 on number match (10A vs 10)',
+    "simHouseNumber": fields.Float(description= 'Similarity between house numbers. 1 if perfect (non empty) match, 0.8 on range match (10 vs 8-10 or 10-12), 0.5 on number match (10A vs 10)',
                                    example=1.0),
 }, skip_none=True)
 
@@ -389,7 +385,7 @@ output_address = namespace.model("cleansedAddress",
                             {
                                'metadata':   fields.Nested(output_meta,   skip_none=True, description= "Information describing the geocoding process"),
                                'output':     fields.Nested(output_output, skip_none=True, description= "Geocoding result (standardized address and geographical coordinates)"),
-                               'check':      fields.Nested(output_checks, skip_none=True, mandatory=False, description=f"Similarity between input address and result (only if mode=long and checkResult=true). If checkResult=true, result are eliminated if (SIMZip = 0 and SimCity < {similarity_threshold}) or (SIMStreet < {similarity_threshold})")
+                               'check':      fields.Nested(output_checks, skip_none=True, mandatory=False, description=f"Similarity between input address and result (only if mode=long and checkResult=true). If checkResult=true, result are eliminated if (simZip = 0 and simCity < {similarity_threshold}) or (simStreet < {similarity_threshold})")
                             }, skip_none=True)
 
 geocode_output = namespace.model("geocodeOutput",
@@ -463,7 +459,7 @@ class Geocode(Resource):
 
 
     @namespace.marshal_with(geocode_output, description='Found a match for this address (or some rejected addresses)', skip_none=True)#, code=200)
-
+    
     def post(self):
         """
 Geocode (postal address cleansing and conversion into geographical coordinates) a single address.
@@ -616,27 +612,15 @@ Fields available in output will depends upon parameter "mode" (see 'mode:xx' in 
 
 
 
-# Call to this : curl -F media=@address_sample100.csv http://127.0.0.1:5000/batch/ -X POST -F mode=long
-batch_parser = reqparse.RequestParser()
-# batch_parser.add_argument('csv file',
-#                           type=werkzeug.datastructures.FileStorage,
-#                           location='files',
-#                           help="""
-# A CSV file with the following columns:
 
-# - streetName
-# - houseNumber
-# - postCode
-# - postName
-# - country
-# - addrKey (must be unique)""")
+batch_parser = reqparse.RequestParser()
 
 batch_parser.add_argument('mode',
                           type=str,
                           choices=('geo', 'short', 'long'),
                           default='short',
                           help="""
-Selection of columns in the ouput :
+Selection of fields in the ouput :
 
 - geo: only return lat/long
 - short: return lat/long, cleansed address (street, number, zipcode, postname, country)
