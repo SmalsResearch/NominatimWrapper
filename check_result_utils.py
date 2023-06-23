@@ -478,27 +478,16 @@ def ignore_mismatch_keep_bests(addr_matches,
     Parameters
     ----------
     addr_matches : pd.DataFrame
-        DESCRIPTION.
     street_fields_a : str
-        DESCRIPTION.
     housenbr_field_a : str
-        DESCRIPTION.
     postcode_field_a : str
-        DESCRIPTION.
     city_field_a : str
-        DESCRIPTION.
     street_field_b : str
-        DESCRIPTION.
     housenbr_field_b : str
-        DESCRIPTION.
     postcode_field_b : str
-        DESCRIPTION.
     city_field_b : str
-        DESCRIPTION.
     max_res : int, optional
-        DESCRIPTION. The default is 1.
-    secondary_sort_field : TYPE, optional
-        DESCRIPTION. The default is "osm_order".
+    secondary_sort_field : str, optional
 
     Returns
     -------
@@ -523,7 +512,7 @@ def ignore_mismatch_keep_bests(addr_matches,
     vlog("Will compare streets")
     for street_field_a in street_fields_a :
         # Only compute a new street distance if the computed distance is below the threshold so far
-        x = (distances[("check","sim_street")] < similarity_threshold)
+        x = distances[("check","sim_street")] < similarity_threshold
 
         distances[("check","sim_street")] = distances[("check","sim_street")].where(~x, street_compare(addr_matches[street_field_a][x].fillna(""), street_b[x]))
 
@@ -540,9 +529,9 @@ def ignore_mismatch_keep_bests(addr_matches,
 
     distances[("check","sim_city")] =      city_compare(addr_matches[city_field_a].fillna(""), addr_matches[city_field_b].fillna(""))
 
-    elimination_rule = ((distances[("check","sim_post_code")] < 0.1) & (distances[("check","sim_city")] < similarity_threshold)) | (distances[("check","sim_street")] < similarity_threshold)  
+    elimination_rule = ((distances[("check","sim_post_code")] < 0.1) & (distances[("check","sim_city")] < similarity_threshold)) | (distances[("check","sim_street")] < similarity_threshold)
 
-    
+
 
     rejected = addr_matches[elimination_rule].merge(distances, left_index=True, right_index=True).copy()
 

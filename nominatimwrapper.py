@@ -118,17 +118,42 @@ vlog(transformers_sequence)
 
 
 def check_osm():
+    """
+    Check that Nominatim server is up&running
+
+    Returns
+    -------
+    Object
+        True: Everything is fine
+        False: Server does not answer
+        list of dict: answer from Nominatim if it does not contain the expected values
+
+
+    """
     try:
         osm_res = get_osm(city_test_from)
         if city_test_to[0] in osm_res[0]["namedetails"]["name:fr"]:
             return True # Everything is fine
-        return osm  # Server answers, but gives an unexpected result
+        return osm_res  # Server answers, but gives an unexpected result
     except Exception as exc:
         vlog("Exception occured: ")
         vlog(exc)
         return False    # Server does not answer
 
 def check_libpostal():
+    """
+    Check that libpostal server is up&running
+
+    Returns
+    -------
+    Object
+        True: Everything is fine
+        False: Server does not answer
+        list of list: answer from libpostal if it does not contain the expected values
+
+
+    """
+
     try:
         lpost_res = parse_address(city_test_from)
         if lpost_res[0][0].lower() == city_test_to[0].lower():
@@ -141,6 +166,17 @@ def check_libpostal():
 
 
 def check_photon():
+    """
+    Check that Photon server is up&running
+
+    Returns
+    -------
+    Object
+        True: Everything is fine
+        False: Server does not answer
+        dict: answer from Nominatim if it does not contain the expected values
+    """
+
     try:
         photon_res = get_photon("Bruxelles")
         if city_test_to[0] in photon_res["features"][0]["properties"]["name"] or \
@@ -228,6 +264,22 @@ log("Waiting for requests...")
 
 
 def convert_bool(value):
+    """
+    Convert "true" and "false" (non case sensitive) string values in 
+    their corresponding booleans.
+    Any other value is returned as such.
+
+    Parameters
+    ----------
+    value : str or bool
+        Excepting "true", "false", True or False
+
+    Returns
+    -------
+    bool
+        True or False (or original value)
+
+    """
     if isinstance(value, str):
         if value.lower()=="false":
             return False
@@ -284,7 +336,7 @@ namespace = api.namespace(
     '',
     'Main namespace')
 
-single_address = namespace.model("SingleAddress",
+input_address = namespace.model("InputAddress",
                           {'referenceKey': fields.String(example="1"),
                            'streetName':fields.String(example="Avenue Fonsny",
                                                      description="The name of a passage or way through from one location to another (cf. Fedvoc)."),
@@ -297,16 +349,17 @@ single_address = namespace.model("SingleAddress",
                            'countryName': fields.String(example="Belgium",
                                                     description="The country of the address, expressed in natural language, possibly with errors (cf. Fedvoc)"),
                            'fullAddress': fields.String(example="Avenue Fonsny, 20, 1060 Bruxelles",
-                                                    description="Full address in a single field. Cannot be used together with any of the other street component field, with checkResult=true or with structuredOsm=true"),
+                                                    description="Full address in a single field. Cannot be used together with any of the other street component fields, with checkResult=true or with structuredOsm=true"),
                           },
-                         description ="Generic content for a single input address",
+                         description ="Content for a single input address",
                          skip_none=True)
 
-input_address   = namespace.model("InputAddress",   {"address": fields.Nested(single_address)}, skip_none=True)
-input_addresses = namespace.model("InputAddresses", {"addresses": fields.List(fields.Nested(single_address))})
+
+input_address_list = namespace.model("InputAddressList", {"addresses": fields.List(fields.Nested(input_address))})
 
 output_meta=namespace.model("OutputMetadata", {
-    "method":       fields.String(description="Which transformation methods were used before sending the address to Nominatim. If the address was found without any transformation, will be 'orig' (or 'fast') (mode:all)",
+    "method":       fields.String(description="Which transformation methods were used before sending the address to Nominatim. "+\
+                                              "If the address was found without any transformation, will be 'orig' (or 'fast') (mode:all)",
                                   example='libpostal+regex[lpost]'),
     "referenceKey":      fields.String(description="Copied from input (mode:all)",
                                   example='1'),
@@ -350,15 +403,10 @@ output_output=namespace.model("OutputOutput", {
     "other":       fields.String(description= 'Concatenate all values which were not picked by one of the above item (mode:short,full). Not structured, not any guarantee about order.',
                                  example=''),
 
-#     "lpostHouseNumber":  fields.String(description= '"housenumber" provided by libpostal receiving concatenation of street and house number (from input) (if extraHouseNumber = true ; mode:short,full)',
-#                                        example='20'),
 
-#     "lpostUnit":  fields.String(description= '"unit"  provided by libpostal receiving concatenation of street and house number (from input) (if extraHouseNumber = true ; mode:short,full)',
-#                                 example='box 2'),
+    "libpostalHouseNumber":  fields.List(fields.String,
+                                           description= 'List of "housenumber" and "unit" provided by libpostal receiving concatenation of street and house number (from input) (if extraHouseNumber = true ; mode:short,full)',
 
-    "libpostalHouseNumber":  fields.List(fields.String, 
-                                           description= 'List of "housenumber" and "unit" provided by libpostal receiving concatenation of street and house number (from input) (if extraHouseNumber = true ; mode:short,full)', 
-                                        
                                         example=['20', 'box 2']),
 
 
@@ -465,7 +513,7 @@ class Geocode(Resource):
 
 
     @namespace.marshal_with(geocode_output, description='Found a match for this address (or some rejected addresses)', skip_none=True)#, code=200)
-    
+
     def post(self):
         """
 Geocode (postal address cleansing and conversion into geographical coordinates) a single address.
@@ -480,16 +528,19 @@ Fields available in output will depends upon parameter "mode" (see 'mode:xx' in 
         for k in timestats:
             timestats[k]=timedelta(0)
 
-        try:
-            if "address" not in namespace.payload:
-                namespace.abort(400, "No data (address) was provided in payload")
-        except Exception as e:
-            log("exception")
-            log(e)
+        log("payload:")
+        log(namespace.payload)
+#         try:
+#             if "address" not in namespace.payload:
+#                 log("No data (address) was provided in payload")
+#                 namespace.abort(400, "No data (address) was provided in payload")
+#         except Exception as e:
+#             log("exception")
+#             log(e)
 
-            namespace.abort(400, "Cannot read request payload")
+#             namespace.abort(400, "Cannot read request payload")
 
-        data = namespace.payload["address"]
+        data = namespace.payload#["address"]
 
         used_fields = list(filter(lambda x: data[x]!="", data))
 
@@ -659,7 +710,7 @@ batch_parser.add_argument('extraHouseNumber',
 class BatchGeocode(Resource):
     """Batch geocoding"""
 
-    @namespace.expect(batch_parser, input_addresses)
+    @namespace.expect(batch_parser, input_address_list)
 
     @namespace.response(400, 'Error in arguments')
     @namespace.response(500, 'Internal Server error')
@@ -700,14 +751,9 @@ Fields available in output will depends upon parameter "mode" (see 'mode:xx' in 
 
 
 
-        try:
-            if "addresses" not in namespace.payload:
-                namespace.abort(400, "No data (address) was provided in payload")
-        except Exception as e:
-            log("exception")
-            log(e)
+        if "addresses" not in namespace.payload:
+            namespace.abort(400, "No data (addresses) was provided in payload")
 
-            namespace.abort(400, "Cannot read request payload")
 
         data = namespace.payload["addresses"]
 
