@@ -835,9 +835,10 @@ def add_extra_house_number(osm_addresses):
 
     result[("output", "in_house_number")] = result[housenbr_field]
 
-    lp = result.fillna("").apply(lambda row: get_lpost_house_number(f"{row[street_field]} {row[housenbr_field]}, {row[postcode_field]} {row[city_field]}".strip()), axis=1,  result_type ='expand')
+    lp = result.fillna("").apply(lambda row: get_lpost_house_number(f"{row[street_field]} {row[housenbr_field]}, {row[postcode_field]} {row[city_field]}".strip()), axis=1)#,  result_type ='expand')
 
-    result[[("output","lpost_house_number"), ("output","lpost_unit")]] = lp
+    #result[[("output","lpost_house_number"), ("output","lpost_unit")]] = lp
+    result[("output","libpostal_house_number")] = lp
 
     vlog("End of adding extra house number")
     update_timestats("extra_hn", start_time)
@@ -870,8 +871,10 @@ def add_lpost_house_number(addr_in, match, data):
     lpost = get_lpost_house_number(addr_in)
 
     match["output"]["in_house_number"] = data[housenbr_field] if housenbr_field in data else ""
-    match["output"]["lpost_house_number"] = lpost[0]
-    match["output"]["lpost_unit"] = lpost[1]
+    # match["output"]["lpost_house_number"] = lpost[0]
+    # match["output"]["lpost_unit"] = lpost[1]
+    match["output"]["libpostal_house_number"] = lpost
+    # match["output"]["lpost_unit"] = lpost[1]
 
 
 #######################

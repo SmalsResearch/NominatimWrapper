@@ -273,7 +273,7 @@ api = Api(app,
           """,
           external_docs={"description": "ext docs", "url": "https://github.com/SmalsResearch/NominatimWrapper/"}, # does not work
           doc='/doc',
-          prefix='/REST/nominatimWrapper/v1.0',
+          prefix='/REST/nominatimWrapper/v1',
           contact='Vandy BERTEN',
           contact_email='vandy.berten@smals.be',
           contact_url='https://www.smalsresearch.be/author/berten/',
@@ -348,12 +348,16 @@ output_output=namespace.model("OutputOutput", {
     "other":       fields.String(description= 'Concatenate all values which were not picked by one of the above item (mode:short,full). Not structured, not any guarantee about order.',
                                  example=''),
 
-    "lpostHouseNumber":  fields.String(description= '"housenumber" provided by libpostal receiving concatenation of street and house number (from input) (if extraHouseNumber = true ; mode:short,full)',
-                                       example='20'),
+#     "lpostHouseNumber":  fields.String(description= '"housenumber" provided by libpostal receiving concatenation of street and house number (from input) (if extraHouseNumber = true ; mode:short,full)',
+#                                        example='20'),
 
-    "lpostUnit":  fields.String(description= '"unit"  provided by libpostal receiving concatenation of street and house number (from input) (if extraHouseNumber = true ; mode:short,full)',
-                                example='box 2'),
+#     "lpostUnit":  fields.String(description= '"unit"  provided by libpostal receiving concatenation of street and house number (from input) (if extraHouseNumber = true ; mode:short,full)',
+#                                 example='box 2'),
 
+    "libpostalHouseNumber":  fields.List(fields.String, 
+                                           description= 'List of "housenumber" and "unit" provided by libpostal receiving concatenation of street and house number (from input) (if extraHouseNumber = true ; mode:short,full)', 
+                                        
+                                        example=['20', 'box 2']),
 
 
     "lat": fields.Float(description= 'Latitude, in EPSG:4326. Angular distance from some specified circle or plane of reference (mode:all)',
@@ -444,7 +448,7 @@ single_parser.add_argument('extraHouseNumber',
                            type=bool,
                            choices=(True, False),
                            default=True,
-                           help='If "true", will call libpostal on all addresses to get the house number (cf lpostHouseNumber and lpostUnit fields in output bloc of output)')
+                           help='If "true", will call libpostal on all addresses to get the house number (cf libpostalHouseNumber field in output bloc of output)')
 
 
 @namespace.route('/geocode')
