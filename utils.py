@@ -289,7 +289,7 @@ def retry_with_low_place_rank(osm_results, sent_addresses,
             vlog(f"     - New results with place_rank == 30 after cleansing ({pr_str}):")
 
             osm_results_26 = osm_results_26[osm_results_26[("metadata", "place_rank")] == 30]
-            osm_results_26[("metadata", "retry_on_26")] = True
+            osm_results_26[("metadata", "match_on_cleansed_house_number ")] = True
 
             osm_results = pd.concat([osm_results[~osm_results[addr_key_field].isin(osm_results_26[addr_key_field])],
                                      osm_results_26], sort=False)
@@ -679,7 +679,7 @@ def transform_and_process(to_process_addresses, transformers,
       "todo":        to_process_addresses.shape[0],
       "sent":        sent_addresses.shape[0],
       "match":       osm_results.shape[0],
-      "match_26":    osm_results[("metadata", "retry_on_26")].sum() if ("metadata", "retry_on_26") in osm_results else 0,
+      "match_26":    osm_results[("metadata", "match_on_cleansed_house_number")].sum() if ("metadata", "match_on_cleansed_house_number") in osm_results else 0,
       "reject_rec" : rejected.shape[0],
       "reject_addr": rejected[addr_key_field].nunique(),
       "reject_mism": rejected[rejected[("metadata", "reject_reason")] == "mismatch"][addr_key_field].nunique() if rejected.shape[0]>0 else 0,
@@ -1034,7 +1034,7 @@ def process_address_fast(data, osm_structured=False,
 
                 if osm_res_retry and osm_res_retry["match"][0]["metadata"]["place_rank"] == 30: # if place_rank is not improved, we keep the original result
                     osm_res_retry["match"][0]["metadata"]["cleansed_house_number"] = cleansed_housenbr
-                    osm_res_retry["match"][0]["metadata"]["retry_on_26"] = True
+                    osm_res_retry["match"][0]["metadata"]["match_on_cleansed_house_number"] = True
                     if with_extra_house_number:
                         add_lpost_house_number(addr_in, osm_res_retry["match"][0], data)
 
@@ -1060,7 +1060,7 @@ def process_address_fast(data, osm_structured=False,
             for i, osm_rec in enumerate(osm_res[1:]):
                 rec = format_osm_addr(osm_rec)
                 rec["metadata"]["reject_reason"]= "tail"
-                rec["metadata"]["dist_to_match"] = round(distance( (rec["output"]["lat"], rec["output"]["lon"]), (match["output"]["lat"], match["output"]["lon"])).km, 3)
+                rec["metadata"]["distance_to_match"] = round(distance( (rec["output"]["lat"], rec["output"]["lon"]), (match["output"]["lat"], match["output"]["lon"])).km, 3)
                 rec['metadata'][addr_key_field[1]] = data[addr_key_field]
                 rec['metadata']["osm_order"]=i+1
                 res["rejected"].append(rec)
@@ -1085,7 +1085,7 @@ def add_dist_to_match(osm_results, osm_reject):
     # log(osm_reject)
     assert s_bef ==osm_reject.shape[0]
 
-    osm_reject[("metadata", "dist_to_match")] = osm_reject.apply(lambda rec: round(distance( (rec[("nominatim", "lat")], rec[("nominatim", "lon")]), (rec[("nominatim_match", "lat")], rec[("nominatim_match", "lon")])).km, 3), axis=1)
+    osm_reject[("metadata", "distance_to_match")] = osm_reject.apply(lambda rec: round(distance( (rec[("nominatim", "lat")], rec[("nominatim", "lon")]), (rec[("nominatim_match", "lat")], rec[("nominatim_match", "lon")])).km, 3), axis=1)
 
     return osm_reject.drop("nominatim_match", level=0, axis=1)
 

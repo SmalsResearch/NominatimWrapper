@@ -1,15 +1,15 @@
-FROM centos:7
+#FROM centos:7
 
 # Install Python & Packages
 
-RUN yum -y update && yum -y install python3-3.6.8 python3-devel-3.6.8 gcc-4.8.5 yum-utils && package-cleanup --leaves --all
 
-RUN yum -y install git curl autoconf-2.69 automake-1.13.4 libtool-2.4.2 pkgconfig-0.27.1 make-3.82 && package-cleanup --leaves --all
+FROM centos/python-38-centos7
 
+USER root
 
-# TODO : remove vim
+RUN yum -y install autoconf-2.69 automake-1.13.4  libtool-2.4.2 pkgconfig-0.27.1 make-3.82 && package-cleanup --leaves --all
 
-RUN pip3 install Flask==1.1.2 gunicorn==20.0.4 requests==2.25.0
+RUN pip3 install Flask==2.2.5 gunicorn==20.0.4 requests==2.31.0
 
 # Install libpostal
 # https://github.com/openvenues/libpostal 

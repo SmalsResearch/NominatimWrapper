@@ -535,12 +535,12 @@ def ignore_mismatch_keep_bests(addr_matches,
 
     distances[("check","sim_house_number")] = house_number_compare(addr_matches[housenbr_field_a].fillna(""), addr_matches[housenbr_field_b].fillna(""))
 
-    distances[("check","sim_zip")] =       postcode_compare(addr_matches[postcode_field_a].fillna(""), addr_matches[postcode_field_b].fillna(""))
+    distances[("check","sim_post_code")] =       postcode_compare(addr_matches[postcode_field_a].fillna(""), addr_matches[postcode_field_b].fillna(""))
 
 
     distances[("check","sim_city")] =      city_compare(addr_matches[city_field_a].fillna(""), addr_matches[city_field_b].fillna(""))
 
-    elimination_rule = ((distances[("check","sim_zip")] < 0.1) & (distances[("check","sim_city")] < similarity_threshold)) | (distances[("check","sim_street")] < similarity_threshold)  
+    elimination_rule = ((distances[("check","sim_post_code")] < 0.1) & (distances[("check","sim_city")] < similarity_threshold)) | (distances[("check","sim_street")] < similarity_threshold)  
 
     
 
