@@ -64,7 +64,7 @@ housenbr_field = ("input", "houseNumber")
 postcode_field = ("input", "postCode")
 city_field  =    ("input", "postName")
 country_field =  ("input", "countryName")
-addr_key_field = ("input", "addrKey")
+addr_key_field = ("input", "referenceKey")
 
 transformed_address_field = ("metadata", "transformed_address")
 

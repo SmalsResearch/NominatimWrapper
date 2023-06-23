@@ -285,7 +285,7 @@ namespace = api.namespace(
     'Main namespace')
 
 single_address = namespace.model("SingleAddress",
-                          {'addrKey': fields.String(example="1"),
+                          {'referenceKey': fields.String(example="1"),
                            'streetName':fields.String(example="Avenue Fonsny",
                                                      description="The name of a passage or way through from one location to another (cf. Fedvoc)."),
                            'houseNumber': fields.String(example="20",
@@ -308,7 +308,7 @@ input_addresses = namespace.model("InputAddresses", {"addresses": fields.List(fi
 output_meta=namespace.model("OutputMetadata", {
     "method":       fields.String(description="Which transformation methods were used before sending the address to Nominatim. If the address was found without any transformation, will be 'orig' (or 'fast') (mode:all)",
                                   example='libpostal+regex[lpost]'),
-    "addrKey":      fields.String(description="Copied from input (mode:all)",
+    "referenceKey":      fields.String(description="Copied from input (mode:all)",
                                   example='1'),
     "placeRank":    fields.String(description="'placeRank' field from Nominatim. 26: street level, 30: building level (mode:all)",
                        example='30'),
