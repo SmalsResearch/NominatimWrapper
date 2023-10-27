@@ -93,7 +93,7 @@ Then,
 
 Single call:
 `curl -X 'POST' \
-  'https://[docker ip]:5000/REST/nominatimWrapper/v1.0/geocode?mode=short&withRejected=false&checkResult=false&structOsm=false&extraHouseNumber=true' \
+  'https://[docker ip]:5000/REST/nominatimWrapper/v1/geocode?mode=short&withRejected=false&checkResult=false&structOsm=false&extraHouseNumber=true' \
   -H 'accept: application/json' \
   -H 'Content-Type: application/json' \
   -d '{
@@ -110,7 +110,7 @@ Single call:
 
 Batch call:
 `curl -X 'POST' \
-  'https://[docker ip]:5000/REST/nominatimWrapper/v1.0/batchGeocode?mode=short&withRejected=false&checkResult=false&structOsm=false&extraHouseNumber=true' \
+  'https://[docker ip]:5000/REST/nominatimWrapper/v1/batchGeocode?mode=short&withRejected=false&checkResult=false&structOsm=false&extraHouseNumber=true' \
   -H 'accept: application/json' \
   -H 'Content-Type: application/json' \
   -d '{
