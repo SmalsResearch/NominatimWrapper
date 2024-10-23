@@ -1,14 +1,16 @@
-FROM centos:7
+#FROM centos:7
+
+FROM redhat/ubi9
 
 ARG photon_data
 
-RUN yum -y update && yum -y install java-1.8.0 wget yum-utils && package-cleanup --leaves --all
+RUN yum -y update && yum -y install java-11-openjdk-devel wget yum-utils && package-cleanup --leaves --all
 
 # Install Photon
 
 RUN mkdir /photon
 WORKDIR /photon
-RUN wget --progress=dot:mega https://github.com/komoot/photon/releases/download/0.4.2/photon-0.4.2.jar
+RUN wget --progress=dot:mega https://github.com/komoot/photon/releases/download/0.4.4/photon-0.4.4.jar
 COPY ${photon_data} photon.tar.gz
 RUN tar xzf photon.tar.gz
 RUN rm photon.tar.gz

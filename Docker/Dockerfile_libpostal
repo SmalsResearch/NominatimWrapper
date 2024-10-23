@@ -3,13 +3,19 @@
 # Install Python & Packages
 
 
-FROM centos/python-38-centos7
+#FROM centos/python-38-centos7
+
+#FROM python:3.8
+
+FROM redhat/ubi9
 
 USER root
 
-RUN yum -y install autoconf-2.69 automake-1.13.4  libtool-2.4.2 pkgconfig-0.27.1 make-3.82 && package-cleanup --leaves --all
+RUN yum -y install python39 python3-wheel python3-pip python3-devel
 
-RUN pip3 install Flask==2.2.5 gunicorn==20.0.4 requests==2.31.0
+
+RUN yum -y install autoconf-2.69 automake-1.16.2  libtool-2.4.6 pkgconfig make-4.3 yum-utils git && package-cleanup --leaves --all
+
 
 # Install libpostal
 # https://github.com/openvenues/libpostal 
@@ -29,7 +35,8 @@ RUN ldconfig /usr/local/lib
 
 
 # Pypostal : https://github.com/openvenues/pypostal
-RUN pip3 install postal
+RUN pip install Flask==2.2.5 gunicorn==22.0.0 requests==2.32.3
+RUN pip install postal
 
 RUN mkdir /NominatimWrapper
 WORKDIR /NominatimWrapper

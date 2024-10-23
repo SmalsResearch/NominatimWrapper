@@ -1,8 +1,7 @@
 #!/bin/bash
 
-BUILD_NOMINATIM=false # set to false if you want to build Nominatim separetely
+BUILD_NOMINATIM=true # set to false if you want to build Nominatim separetely
 NOMINATIM_CNT=nominatim
-
 
 # check that docker is installed
 if ! command -v docker &> /dev/null
@@ -28,13 +27,8 @@ then
 fi
 
 
-
-
-
 if $BUILD_NOMINATIM;
 then
-
-
     
     date
     echo 
@@ -60,7 +54,6 @@ then
         exit
     fi
 
-
     echo 
     date
 fi
@@ -70,7 +63,9 @@ echo "## PREPARE PHOTON DATA ##"
 echo "#########################"
 echo 
 
-PHOTON_VERSION=0.4.2
+set -x
+
+PHOTON_VERSION=0.4.4
 
 wget --progress=dot:mega https://github.com/komoot/photon/releases/download/$PHOTON_VERSION/photon-$PHOTON_VERSION.jar
 
@@ -98,8 +93,10 @@ docker exec -it $NOMINATIM_CNT rm -rf /photon.tar.gz /photon-$PHOTON_VERSION.jar
 
 # Shutdown nominatim
 
-docker stop $NOMINATIM_CNT
-docker rm $NOMINATIM_CNT # Otherwise next "up" fails (why ???)
+#docker stop $NOMINATIM_CNT
+#docker rm $NOMINATIM_CNT # Otherwise next "up" fails (why ???)
+
+set +x
 
 echo 
 date

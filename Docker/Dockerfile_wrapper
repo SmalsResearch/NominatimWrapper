@@ -1,14 +1,10 @@
-#FROM centos:8
-
 # Install Python & Packages
 
-FROM centos/python-38-centos7
-
-
+FROM python:3.8
+RUN pip install --upgrade pip
 COPY Docker/requirements.txt ./
-RUN pip3 install -r requirements.txt
+RUN pip install -r requirements.txt --root-user-action=ignore
 
-#
 
 RUN mkdir NominatimWrapper
 WORKDIR NominatimWrapper
